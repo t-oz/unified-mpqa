@@ -42,8 +42,14 @@ class DDL:
         self.cur.execute('CREATE TABLE attitudes ('
                          'attitude_id INTEGER PRIMARY KEY,'
                          'source_id REFERENCES sources(source_id),'
+                         'anchor_token_id REFERENCES mentions(token_id),'
                          'target_token_id REFERENCES mentions(token_id),'
+                         'is_expression INTEGER CHECK(is_expression IN (0,1)),'
+                         'is_implicit INTEGER CHECK(is_implicit IN (0,1)),'
+                         'is_insubstantial INTEGER CHECK(is_insubstantial IN (0,1)),'
                          'label VARCHAR2(255),'
+                         'polarity VARCHAR2(255),'
+                         'intensity VARCHAR2(255),'
                          'label_type VARCHAR2(255) )')
 
     def clear_database(self):
