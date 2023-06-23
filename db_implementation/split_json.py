@@ -1,27 +1,53 @@
+# author: tyler osborne
+# tyler.osborne@stonybrook.edu
+
 import orjson
 import time
+import pprint
+import glob
+import os
 
 if __name__ == '__main__':
+    print("Splitting MPQA JSON into bite-sized pieces...")
     start = time.time()
-    # f = open('mpqa.json', 'r', encoding='utf-8')
-    # content = f.read()
-    # js = orjson.loads(content)
-    # f.close()
-    # del content
+    pp = pprint.PrettyPrinter()
 
-    f = open('mpqa_csds.json', 'r', encoding='utf-8')
-    content = orjson.loads(f.read())
-    first = content[:len(content) // 2]
-    second = content[(len(content) // 2) + 1:]
+    # removing existing files
+    for f in glob.glob("mpqa_*.json"):
+        os.remove(f)
+
+    # starting with big file
+    f = open('mpqa.json', 'r', encoding='utf-8')
+    content = f.read()
+    js = orjson.loads(content)
+
+    # freeing memory
+    del content
     f.close()
 
-    f_first = open('mpqa_csds_1.json', 'wb')
-    f_first.write(orjson.dumps(first))
-    f_first.close()
+    for name in ["csds", "target", "agent"]:
+        content = js[f"{name}_objects"]
 
-    f_second = open('mpqa_csds_2.json', 'wb')
-    f_second.write(orjson.dumps(second))
-    f_second.close()
+        f_full = open(f"mpqa_{name}.json", "wb")
 
-    print(round(time.time() - start, 2))
+        # only split csds objects in two; targets and agents aren't very large
+        if name == "csds":
+
+            f_first = open(f"mpqa_{name}_1.json", "wb")
+            f_second = open(f"mpqa_{name}_2.json", "wb")
+
+            first = content[:len(content) // 2]
+            second = content[(len(content) // 2) + 1:]
+
+            f_first.write(orjson.dumps(first))
+            f_second.write(orjson.dumps(second))
+
+            f_first.close()
+            f_second.close()
+
+        f_full.write(orjson.dumps(content))
+        f_full.close()
+
+    print("Done.")
+    print(f"Time: {round(time.time() - start, 2)} sec")
 
