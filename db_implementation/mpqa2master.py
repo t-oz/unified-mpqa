@@ -31,6 +31,7 @@ class MPQA2MASTER:
 
         self.csds_expr_subj = []
         self.encountered_sentences = {}
+        self.encountered_sources = {}
 
         self.next_global_sentence_id = 1
         self.next_global_token_id = 1
@@ -84,15 +85,32 @@ class MPQA2MASTER:
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
                              'VALUES (?, ?, ?, ?);', self.master_sentences)
 
-    # process a single expressive subjective annotation and its relevant source(s)
+    # process a single expressive subjective annotation
+    # belief always null
+    # attitudes always empty
+    #
     def proc_expr_subj(self, annotation):
+        # dealing with sources: if there is only one source, it is the author and we are done
+        # otherwise, traverse the nested source links, processing each one from the agents list and linking
+        # the parent_source IDs. traverse the nested source links in reverse
+        for nested_source_link in annotation['nested_source_link'].reverse():
+
+            # ensuring no duplicate inserts of sources
+            if nested_source_link not in self.encountered_sources:
+
+            agent = self.agents[nested_source_link]
+
+
+
+    # process a single direct subjective annotation
+    def proc_dir_subj(self, annotation):
+        pass
+
+    # process a single direct objective annotation
+    def proc_dir_obj(self, annotation):
         pass
 
     def load_data(self):
-        # i = annotation_types = set()
-        # for annotation in self.csds:
-        #     annotation_types.add(annotation["annotation_type"])
-        # self.pp.pprint(annotation_types)
         test_sentences = set()
         # loop over all annotations, executing different functions for each respective annotation type
         bar = Bar("Annotations Processed", max=len(self.csds))
@@ -120,17 +138,19 @@ class MPQA2MASTER:
             if new_sentence_insert:
                 self.master_sentences.append([global_sentence_id, file, file_sentence_id, sentence])
 
-            # with sentences populated, the code's behavior diverges depending on the annotation type
+            # past sentences, the code's behavior diverges depending on the annotation type
             bar.next()
-            continue
 
             if annotation['annotation_type'] == 'expressive_subjectivity':
                 self.proc_expr_subj(annotation)
+            elif annotation['annotation_type'] == 'direct_subjective':
+                self.proc_dir_subj(annotation)
+            elif annotation['annotation_type'] == 'objective_speech_event':
+                self.proc_dir_obj(annotation)
             else:
                 continue
 
         bar.finish()
-        print(len(test_sentences))
 
 
 if __name__ == "__main__":
