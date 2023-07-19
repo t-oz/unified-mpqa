@@ -85,6 +85,35 @@ class MPQA2MASTER:
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
                              'VALUES (?, ?, ?, ?);', self.master_sentences)
 
+    """
+    inputs: annotation
+    output: most relevant source entry
+    
+    this function takes in an annotation and processes the entire tree of sources associated with the annotation.
+    a dictionary, encountered_sources, is used to ensure duplicate sources are not inserted.
+    encountered_sources: unique_agent_id -> unique_source_id
+    
+    pseudo:
+    start at the most nested source. check if it has been encountered.
+        if it has, retrieve the unique_source_id from the dictionary. we are done.
+        if not, move up the tree until either:
+            (a) we encounter a source already present in the dictionary.
+            (b) we reach the top of the tree.
+    
+    (a): work backwards -- go back to the previous source in the tree and
+         create mention/source entries (source encountered in (a) = first parent source), 
+         and create entry in encountered_sources
+    (b): same as (a), except insert the source at the top of the tree first
+    
+    continue working backwards, inserting mention/source entries at each level of the tree, using previous iterations of
+    the loop as parent source IDs
+    
+    return the source ID for the source most immediate to the annotation in question
+        
+    """
+    def process_sources(self):
+        pass
+
     # process a single expressive subjective annotation
     # belief always null
     # attitudes always empty
@@ -93,12 +122,13 @@ class MPQA2MASTER:
         # dealing with sources: if there is only one source, it is the author and we are done
         # otherwise, traverse the nested source links, processing each one from the agents list and linking
         # the parent_source IDs. traverse the nested source links in reverse
-        for nested_source_link in annotation['nested_source_link'].reverse():
-
-            # ensuring no duplicate inserts of sources
-            if nested_source_link not in self.encountered_sources:
-
-            agent = self.agents[nested_source_link]
+        pass
+        # for nested_source_link in annotation['nested_source_link'].reverse():
+        #
+        #     # ensuring no duplicate inserts of sources
+        #     if nested_source_link not in self.encountered_sources:
+        #
+        #     agent = self.agents[nested_source_link]
 
 
 
