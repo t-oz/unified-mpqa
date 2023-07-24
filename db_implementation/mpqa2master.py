@@ -76,10 +76,23 @@ class MPQA2MASTER:
 
         print("\nLoading Python data into master schema...")
         self.load_data()
+        self.run_tests()
         self.exec_sql()
 
         self.con.commit()
         self.con.close()
+
+    def run_tests(self):
+        dupe_source_annotations = []
+        for annotation in self.csds:
+            if annotation['nested_source_link'] is not None \
+                    and len(annotation['nested_source_link']) \
+                    != len(set(annotation['nested_source_link'])):
+
+                dupe_source_annotations.append(annotation)
+
+        # self.pp.pprint(len(dupe_source_annotations))
+        return
 
     def exec_sql(self):
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
@@ -111,26 +124,48 @@ class MPQA2MASTER:
     return the source ID for the source most immediate to the annotation in question
         
     """
-    def process_sources(self):
-        pass
+    def process_sources(self, annotation):
+        # skipping useless annotations
+        if annotation['nested_source_link'] is None or len(annotation['nested_source_link']) == 0:
+            return -1
 
-    # process a single expressive subjective annotation
-    # belief always null
-    # attitudes always empty
-    #
+        # looping over sources in reverse
+        agents = annotation['nested_source_link'].reverse()
+        nesting_level = len(agents) - 1
+        relevant_global_source_id = None
+
+        agent_stack = []
+
+        # first loop: traverse tree leaf -> root, until we find an encountered source or reach the root
+        for agent_id in agents:
+            key = (agent_id, nesting_level)
+            if key in self.encountered_sources:
+                relevant_global_source_id = self.encountered_sources[key]
+                break
+            else:
+                self.encountered_sources[key] = self.next_global_source_id
+                relevant_global_source_id = self.encountered_sources[key]
+                # if len(agents) == 1:
+                #     relevant_global_source_id = self.next_global_source_id
+                #     break
+                # else:
+                agent_stack.append(agent_id)
+
+                self.next_global_source_id += 1
+                nesting_level -= 1
+
+        # second loop: traverse stack of un-encountered sources, creating DB entries as necessary
+        global_parent_source_id = None
+        for agent_id in reversed(agent_stack):
+
+
+
+
     def proc_expr_subj(self, annotation):
         # dealing with sources: if there is only one source, it is the author and we are done
         # otherwise, traverse the nested source links, processing each one from the agents list and linking
         # the parent_source IDs. traverse the nested source links in reverse
-        pass
-        # for nested_source_link in annotation['nested_source_link'].reverse():
-        #
-        #     # ensuring no duplicate inserts of sources
-        #     if nested_source_link not in self.encountered_sources:
-        #
-        #     agent = self.agents[nested_source_link]
-
-
+        global_source_id = self.process_sources(annotation)
 
     # process a single direct subjective annotation
     def proc_dir_subj(self, annotation):
