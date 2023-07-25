@@ -88,7 +88,6 @@ class MPQA2MASTER:
             if annotation['nested_source_link'] is not None \
                     and len(annotation['nested_source_link']) \
                     != len(set(annotation['nested_source_link'])):
-
                 dupe_source_annotations.append(annotation)
 
         # self.pp.pprint(len(dupe_source_annotations))
@@ -97,6 +96,13 @@ class MPQA2MASTER:
     def exec_sql(self):
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
                              'VALUES (?, ?, ?, ?);', self.master_sentences)
+        self.con.executemany('INSERT INTO mentions '
+                             '(token_id, sentence_id, token_text, token_offset_start, '
+                             'token_offset_end, phrase_text, phrase_offset_start, phrase_offset_end) '
+                             'VALUES (?, ?, ?, ?, ?, ?, ?, ?);', self.master_mentions)
+        self.con.executemany('INSERT INTO sources '
+                             '(source_id, sentence_id, token_id, parent_source_id, nesting_level, [source]) '
+                             'VALUES (?, ?, ?, ?, ?, ?);', self.master_sources)
 
     """
     inputs: annotation
@@ -124,15 +130,21 @@ class MPQA2MASTER:
     return the source ID for the source most immediate to the annotation in question
         
     """
-    def process_sources(self, annotation):
+
+    def process_sources(self, annotation, global_sentence_id):
         # skipping useless annotations
-        if annotation['nested_source_link'] is None or len(annotation['nested_source_link']) == 0:
-            return -1
+        # if type(annotation['nested_source_link']) is NoneType or len(annotation['nested_source_link']) == 0:
+        #     return -1
 
         # looping over sources in reverse
-        agents = annotation['nested_source_link'].reverse()
-        nesting_level = len(agents) - 1
+        agents = list(reversed(annotation['nested_source_link']))
+        try:
+            nesting_level = len(agents) - 1
+        except Exception:
+            return -1
+
         relevant_global_source_id = None
+        author_only_repeat = False
 
         agent_stack = []
 
@@ -145,27 +157,49 @@ class MPQA2MASTER:
             else:
                 self.encountered_sources[key] = self.next_global_source_id
                 relevant_global_source_id = self.encountered_sources[key]
-                # if len(agents) == 1:
-                #     relevant_global_source_id = self.next_global_source_id
-                #     break
-                # else:
-                agent_stack.append(agent_id)
 
                 self.next_global_source_id += 1
                 nesting_level -= 1
 
+                agent_stack.append((agent_id, nesting_level, relevant_global_source_id))
+
+        # no parent source if we made it all the way to the top of the tree in the first loop
+        if len(agents) == len(agent_stack):
+            global_parent_source_id = None
+        else:
+            global_parent_source_id = relevant_global_source_id
+
         # second loop: traverse stack of un-encountered sources, creating DB entries as necessary
-        global_parent_source_id = None
-        for agent_id in reversed(agent_stack):
+        sources_entry = None
+        for agent_id, nesting_level, global_source_id in list(reversed(agent_stack)):
+            # create mentions entry
+            global_token_id = self.next_global_token_id
+            self.next_global_token_id += 1
 
+            agent_annotation = self.agents[agent_id]
+            mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
+                              agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
 
+            self.master_mentions.append(mentions_entry)
 
+            # create sources entry
+            # global_source_id = self.encountered_sources[(agent_id, nesting_level)]
+            sources_entry = [global_source_id, global_sentence_id, global_token_id,
+                             global_parent_source_id, nesting_level, agent_annotation['head']]
+            # nesting_level += 1
 
-    def proc_expr_subj(self, annotation):
+            self.master_sources.append(sources_entry)
+
+            # replacing parent source with this source to prep for next iteration
+            global_parent_source_id = global_source_id
+
+        return sources_entry[0]
+
+    def proc_expr_subj(self, annotation, global_sentence_id):
         # dealing with sources: if there is only one source, it is the author and we are done
         # otherwise, traverse the nested source links, processing each one from the agents list and linking
         # the parent_source IDs. traverse the nested source links in reverse
-        global_source_id = self.process_sources(annotation)
+        global_source_id = self.process_sources(annotation, global_sentence_id)
 
     # process a single direct subjective annotation
     def proc_dir_subj(self, annotation):
@@ -207,7 +241,7 @@ class MPQA2MASTER:
             bar.next()
 
             if annotation['annotation_type'] == 'expressive_subjectivity':
-                self.proc_expr_subj(annotation)
+                self.proc_expr_subj(annotation, global_sentence_id)
             elif annotation['annotation_type'] == 'direct_subjective':
                 self.proc_dir_subj(annotation)
             elif annotation['annotation_type'] == 'objective_speech_event':
