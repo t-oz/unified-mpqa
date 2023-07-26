@@ -74,23 +74,28 @@ class MPQA2MASTER:
         bar.next()
         bar.finish()
 
+        # self.run_tests()
+        # exit()
+
         print("\nLoading Python data into master schema...")
         self.load_data()
-        self.run_tests()
         self.exec_sql()
 
         self.con.commit()
         self.con.close()
 
     def run_tests(self):
-        dupe_source_annotations = []
+        ghost_agent_annotations = []
         for annotation in self.csds:
-            if annotation['nested_source_link'] is not None \
-                    and len(annotation['nested_source_link']) \
-                    != len(set(annotation['nested_source_link'])):
-                dupe_source_annotations.append(annotation)
+            try:
+                for agent_id in list(reversed(annotation['nested_source_link'])):
+                    if agent_id not in self.agents:
+                        ghost_agent_annotations.append(annotation)
+                        break
+            except:
+                continue
 
-        # self.pp.pprint(len(dupe_source_annotations))
+        self.pp.pprint(len(ghost_agent_annotations))
         return
 
     def exec_sql(self):
@@ -144,24 +149,32 @@ class MPQA2MASTER:
             return -1
 
         relevant_global_source_id = None
-        author_only_repeat = False
 
         agent_stack = []
 
         # first loop: traverse tree leaf -> root, until we find an encountered source or reach the root
         for agent_id in agents:
-            key = (agent_id, nesting_level)
+            # disambiguating agent-w's to be sentence-based, not file-based
+            if agent_id[-7:] == 'agent-w':
+                key = (agent_id + str(global_sentence_id), nesting_level)
+            else:
+                key = (agent_id, nesting_level)
+
             if key in self.encountered_sources:
                 relevant_global_source_id = self.encountered_sources[key]
+
+                # annoying edge case
+                if len(agents) == 1:
+                    agent_stack.append((agent_id, nesting_level, relevant_global_source_id))
                 break
             else:
-                self.encountered_sources[key] = self.next_global_source_id
-                relevant_global_source_id = self.encountered_sources[key]
-
+                # self.encountered_sources[key] = self.next_global_source_id
+                # relevant_global_source_id = self.encountered_sources[key]
+                relevant_global_source_id = self.next_global_source_id
                 self.next_global_source_id += 1
-                nesting_level -= 1
 
                 agent_stack.append((agent_id, nesting_level, relevant_global_source_id))
+                nesting_level -= 1
 
         # no parent source if we made it all the way to the top of the tree in the first loop
         if len(agents) == len(agent_stack):
@@ -169,31 +182,46 @@ class MPQA2MASTER:
         else:
             global_parent_source_id = relevant_global_source_id
 
-        # second loop: traverse stack of un-encountered sources, creating DB entries as necessary
-        sources_entry = None
+        # second loop: traverse stack of un-encountered sources, creating DB entries as needed
+        useful_global_source_id = None
         for agent_id, nesting_level, global_source_id in list(reversed(agent_stack)):
             # create mentions entry
             global_token_id = self.next_global_token_id
             self.next_global_token_id += 1
 
+            # some agents... don't exist? not sure why
+            if agent_id not in self.agents:
+                continue
             agent_annotation = self.agents[agent_id]
-            mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
-                              agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
+
+            # disambiguating agent-w's to be sentence-based, not file-based
+            # also customizing author-only mentions
+            if agent_id[-7:] == 'agent-w':
+                mentions_entry = [global_token_id, global_sentence_id, 'AUTHOR', -1, -1, None, None, None]
+                key = (agent_id + str(global_sentence_id), nesting_level)
+            else:
+                mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
+                                  agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
+                key = (agent_id, nesting_level)
 
             self.master_mentions.append(mentions_entry)
 
-            # create sources entry
-            # global_source_id = self.encountered_sources[(agent_id, nesting_level)]
-            sources_entry = [global_source_id, global_sentence_id, global_token_id,
-                             global_parent_source_id, nesting_level, agent_annotation['head']]
-            # nesting_level += 1
+            if key in self.encountered_sources:
+                global_source_id = self.encountered_sources[key]
+            else:
+                self.encountered_sources[key] = global_source_id
+                sources_entry = [global_source_id, global_sentence_id, global_token_id,
+                                 global_parent_source_id, nesting_level, agent_annotation['head']]
+                self.master_sources.append(sources_entry)
 
-            self.master_sources.append(sources_entry)
+            # saving out global source id for this entry for return, since the last one processed in this loop
+            # is what we want
+            useful_global_source_id = global_source_id
 
             # replacing parent source with this source to prep for next iteration
             global_parent_source_id = global_source_id
 
-        return sources_entry[0]
+        return useful_global_source_id
 
     def proc_expr_subj(self, annotation, global_sentence_id):
         # dealing with sources: if there is only one source, it is the author and we are done
@@ -210,15 +238,12 @@ class MPQA2MASTER:
         pass
 
     def load_data(self):
-        test_sentences = set()
         # loop over all annotations, executing different functions for each respective annotation type
         bar = Bar("Annotations Processed", max=len(self.csds))
         for annotation in self.csds:
             # all annotation types will require identical processing in many areas
             file = annotation['doc_id']
             sentence = annotation['text']
-
-            test_sentences.add(sentence)
 
             # careful to add only unique sentences to the DB
             if annotation['sentence_id'] not in self.encountered_sentences:
@@ -239,6 +264,8 @@ class MPQA2MASTER:
 
             # past sentences, the code's behavior diverges depending on the annotation type
             bar.next()
+
+            # disambiguating sources?
 
             if annotation['annotation_type'] == 'expressive_subjectivity':
                 self.proc_expr_subj(annotation, global_sentence_id)
