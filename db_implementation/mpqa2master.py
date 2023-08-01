@@ -9,6 +9,7 @@ import pprint
 import glob
 import os
 import re
+import random
 from progress.bar import Bar
 
 
@@ -74,8 +75,8 @@ class MPQA2MASTER:
         bar.next()
         bar.finish()
 
-        # self.run_tests()
-        # exit()
+        self.run_tests()
+        exit()
 
         print("\nLoading Python data into master schema...")
         self.load_data()
@@ -94,7 +95,7 @@ class MPQA2MASTER:
                         break
             except:
                 continue
-
+        sample = random.sample(ghost_agent_annotations, 10)
         self.pp.pprint(len(ghost_agent_annotations))
         return
 
@@ -135,7 +136,8 @@ class MPQA2MASTER:
     return the source ID for the source most immediate to the annotation in question
         
     """
-
+    # BUG: nested source link's data corresponds to the FIRST mention of a source, not the one for THIS SENTENCE... that
+    # data comes from the "convenient" nested_source LIST
     def process_sources(self, annotation, global_sentence_id):
         # skipping useless annotations
         # if type(annotation['nested_source_link']) is NoneType or len(annotation['nested_source_link']) == 0:
