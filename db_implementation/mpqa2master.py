@@ -43,6 +43,8 @@ class MPQA2MASTER:
         self.pp = pprint.PrettyPrinter()
         self.oc = OffsetsCorrection()
 
+        self.errors = []
+
     # initializing the DDL for the master schema
     @staticmethod
     def create_tables():
@@ -84,8 +86,15 @@ class MPQA2MASTER:
         self.load_data()
         self.exec_sql()
 
+        self.dump_errors()
+
         self.con.commit()
         self.con.close()
+
+    def dump_errors(self):
+        f = open('error_annotations.txt', 'wb')
+        f.write(orjson.dumps(self.errors))
+        f.close()
 
     def run_tests(self):
         ghost_agent_annotations = []
@@ -309,6 +318,7 @@ class MPQA2MASTER:
 
             # skipping useless annotations
             if annotation['text'] == '' or annotation['head'] == '' or self.is_ghost_annotation(annotation):
+                self.errors.append(annotation)
                 continue
 
             # all annotation types will require identical processing in many areas
@@ -332,6 +342,7 @@ class MPQA2MASTER:
             if new_sentence_insert:
                 clean_text, offset_list = None, None
                 try:
+                    # note: use justin's clean head!
                     clean_text, offset_list = self.oc.assemble_tokens(annotation['w_text'], annotation['w_head'])
                 except:
                     pass
