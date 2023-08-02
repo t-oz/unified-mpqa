@@ -1,16 +1,16 @@
 # author: tyler osborne
 # tyler.osborne@stonybrook.edu
 
-from ddl import DDL
-import sqlite3
-import orjson
-from time import time
 import pprint
-import glob
-import os
-import re
 import random
+import sqlite3
+from time import time
+
+import orjson
 from progress.bar import Bar
+
+from ddl import DDL
+from offsets_correction import OffsetsCorrection
 
 
 # direct objective, expressive & direct subjective annotations
@@ -33,6 +33,7 @@ class MPQA2MASTER:
         self.csds_expr_subj = []
         self.encountered_sentences = {}
         self.encountered_sources = {}
+        self.assembled_tokens = {}
 
         self.next_global_sentence_id = 1
         self.next_global_token_id = 1
@@ -40,6 +41,7 @@ class MPQA2MASTER:
         self.next_global_attitude_id = 1
 
         self.pp = pprint.PrettyPrinter()
+        self.oc = OffsetsCorrection()
 
     # initializing the DDL for the master schema
     @staticmethod
@@ -75,8 +77,8 @@ class MPQA2MASTER:
         bar.next()
         bar.finish()
 
-        self.run_tests()
-        exit()
+        # self.run_tests()
+        # exit()
 
         print("\nLoading Python data into master schema...")
         self.load_data()
@@ -99,6 +101,14 @@ class MPQA2MASTER:
         self.pp.pprint(len(ghost_agent_annotations))
         return
 
+    def is_ghost_annotation(self, annotation):
+        try:
+            for agent_id in list(reversed(annotation['nested_source_link'])):
+                if agent_id not in self.agents:
+                    return True
+            return False
+        except:
+            return True
     def exec_sql(self):
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
                              'VALUES (?, ?, ?, ?);', self.master_sentences)
@@ -109,6 +119,10 @@ class MPQA2MASTER:
         self.con.executemany('INSERT INTO sources '
                              '(source_id, sentence_id, token_id, parent_source_id, nesting_level, [source]) '
                              'VALUES (?, ?, ?, ?, ?, ?);', self.master_sources)
+        self.con.executemany('INSERT INTO attitudes '
+                             '(attitude_id, source_id, anchor_token_id, target_token_id, is_expression, '
+                             'is_implicit, is_insubstantial, label, polarity, intensity, label_type) '
+                             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', self.master_attitudes)
 
     """
     inputs: annotation
@@ -202,8 +216,24 @@ class MPQA2MASTER:
                 mentions_entry = [global_token_id, global_sentence_id, 'AUTHOR', -1, -1, None, None, None]
                 key = (agent_id + str(global_sentence_id), nesting_level)
             else:
-                mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
-                                  agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
+                # mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
+                #                   agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
+                # use LOCAL mention for insertion
+                nested_source = list(annotation['nested_source'])[nesting_level]
+
+                if 'w_head_span' not in tuple(nested_source):
+                    continue
+
+                w_head_start, w_head_end = tuple(nested_source['w_head_span'])
+
+                _, offset_list = self.assembled_tokens[global_sentence_id]
+                if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
+                    mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
+                                      offset_list[w_head_start], offset_list[w_head_end], None, None, None]
+                else:
+                    mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
+                                      None, None, None, None, None]
+
                 key = (agent_id, nesting_level)
 
             self.master_mentions.append(mentions_entry)
@@ -225,11 +255,44 @@ class MPQA2MASTER:
 
         return useful_global_source_id
 
+    # creating mentions entry for anchor
+    def catalog_anchor(self, annotation, global_sentence_id):
+        anchor_token_id = self.next_global_token_id
+        self.next_global_token_id += 1
+
+        clean_text, offset_list = self.assembled_tokens[global_sentence_id]
+        w_head_start, w_head_end = tuple(annotation['w_head_span'])
+
+        if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
+            self.master_mentions.append([anchor_token_id, global_sentence_id,
+                                         clean_text[offset_list[w_head_start]:offset_list[w_head_end]],
+                                         offset_list[w_head_start], offset_list[w_head_end],
+                                         None, None, None])
+        else:
+            self.master_mentions.append([anchor_token_id, global_sentence_id, None, None, None, None, None, None])
+
+        return anchor_token_id
+
+    # intensity: 'intensity'
+    # anchor: new mention using head
+    # no target
+    # is_expression: no
+    # is_implicit: 'implicit'
+    # is_insubstantial: no
+    # label: no
+    # label_type: 'expressive subjective'
+
     def proc_expr_subj(self, annotation, global_sentence_id):
-        # dealing with sources: if there is only one source, it is the author and we are done
-        # otherwise, traverse the nested source links, processing each one from the agents list and linking
-        # the parent_source IDs. traverse the nested source links in reverse
         global_source_id = self.process_sources(annotation, global_sentence_id)
+        global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
+        global_attitude_id = self.next_global_attitude_id
+
+        self.next_global_attitude_id += 1
+
+        # inserting attitude
+        self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
+                                      None, None, annotation['implicit'], None, None, annotation['polarity'],
+                                      annotation['intensity'], 'Expressive Subjective'])
 
     # process a single direct subjective annotation
     def proc_dir_subj(self, annotation):
@@ -243,6 +306,11 @@ class MPQA2MASTER:
         # loop over all annotations, executing different functions for each respective annotation type
         bar = Bar("Annotations Processed", max=len(self.csds))
         for annotation in self.csds:
+
+            # skipping useless annotations
+            if annotation['text'] == '' or annotation['head'] == '' or self.is_ghost_annotation(annotation):
+                continue
+
             # all annotation types will require identical processing in many areas
             file = annotation['doc_id']
             sentence = annotation['text']
@@ -262,7 +330,16 @@ class MPQA2MASTER:
 
             # if it is a new sentence, prep it for SQL insertion
             if new_sentence_insert:
-                self.master_sentences.append([global_sentence_id, file, file_sentence_id, sentence])
+                clean_text, offset_list = None, None
+                try:
+                    clean_text, offset_list = self.oc.assemble_tokens(annotation['w_text'])
+                except:
+                    pass
+
+                # memoize!
+                self.assembled_tokens[global_sentence_id] = (clean_text, offset_list)
+
+                self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
 
             # past sentences, the code's behavior diverges depending on the annotation type
             bar.next()
