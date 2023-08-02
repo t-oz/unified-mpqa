@@ -285,8 +285,8 @@ class MPQA2MASTER:
     def proc_expr_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
         global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
-        global_attitude_id = self.next_global_attitude_id
 
+        global_attitude_id = self.next_global_attitude_id
         self.next_global_attitude_id += 1
 
         # inserting attitude
