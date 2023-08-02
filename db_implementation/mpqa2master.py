@@ -332,9 +332,10 @@ class MPQA2MASTER:
             if new_sentence_insert:
                 clean_text, offset_list = None, None
                 try:
-                    clean_text, offset_list = self.oc.assemble_tokens(annotation['w_text'])
+                    clean_text, offset_list = self.oc.assemble_tokens(annotation['w_text'], annotation['w_head'])
                 except:
                     pass
+
 
                 # memoize!
                 self.assembled_tokens[global_sentence_id] = (clean_text, offset_list)
