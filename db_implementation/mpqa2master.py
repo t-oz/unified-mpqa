@@ -317,7 +317,7 @@ class MPQA2MASTER:
         for annotation in self.csds:
 
             # skipping useless annotations
-            if annotation['text'] == '' or annotation['head'] == '' or self.is_ghost_annotation(annotation):
+            if self.is_ghost_annotation(annotation):
                 self.errors.append(annotation)
                 continue
 
