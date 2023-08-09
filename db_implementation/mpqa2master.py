@@ -28,6 +28,7 @@ class MPQA2MASTER:
 
         self.agents = {}
         self.csds = []
+        self.csds_dict = {}
         self.targets = {}
 
         self.csds_expr_subj = []
@@ -95,6 +96,9 @@ class MPQA2MASTER:
         f = open('error_annotations.txt', 'wb')
         f.write(orjson.dumps(self.errors))
         f.close()
+        for agent_id in self.agents:
+            agent = self.agents[agent_id]
+            pass
 
     def run_tests(self):
         ghost_agent_annotations = []
@@ -291,6 +295,18 @@ class MPQA2MASTER:
     # label: no
     # label_type: 'expressive subjective'
 
+    @staticmethod
+    def get_attitude_booleans(annotation):
+        is_expression, is_implicit, is_insubstantial = 0, 0, 0
+        if annotation['expression_intensity'] is not None:
+            is_expression = 1
+        if annotation['implicit'] is not None:
+            is_implicit = 1
+        if annotation['implicit'] is not None:
+            is_implicit = 1
+
+        return is_expression, is_implicit, is_insubstantial
+
     def proc_expr_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
         global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
@@ -298,18 +314,71 @@ class MPQA2MASTER:
         global_attitude_id = self.next_global_attitude_id
         self.next_global_attitude_id += 1
 
+        is_expression, is_implicit, is_insubstantial = self.get_attitude_booleans(annotation)
+
         # inserting attitude
         self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
-                                      None, None, annotation['implicit'], None, None, annotation['polarity'],
+                                      None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
                                       annotation['intensity'], 'Expressive Subjective'])
 
     # process a single direct subjective annotation
-    def proc_dir_subj(self, annotation):
-        pass
+    """
+    
+    process sources
+    for each attitude:
+        find corresponding CSDS "attitude" object
+        for each attitude object:
+            create anchor mention entry (same for all targets)
+            for each target:
+                create target mention entry
+                create attitude entry, using target from line 333, source from line 327 and anchor from line 331
+        
+    
+    """
+    def proc_dir_subj(self, annotation, global_sentence_id):
+        global_source_id = self.process_sources(annotation, global_sentence_id)
+        attitudes = list(annotation['attitude'])
+
+        for attitude in attitudes:
+            if not attitude:
+                continue
+
+            global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+            polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], attitude['annotation_type']
+
+            targets = list(attitude['target'])
+
+            for target in targets:
+                if not target:
+                    continue
+
+                head_start, head_end = target['w_head_span']
+
+                target_token_id = self.next_global_token_id
+                self.next_global_token_id += 1
+
+                self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
+                                             head_start, head_end, None, None, None])
+
+                self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
+                                              target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
+                self.next_global_attitude_id += 1
 
     # process a single direct objective annotation
-    def proc_dir_obj(self, annotation):
-        pass
+    def proc_dir_obj(self, annotation, global_sentence_id):
+        global_source_id = self.process_sources(annotation, global_sentence_id)
+        global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
+
+        global_attitude_id = self.next_global_attitude_id
+        self.next_global_attitude_id += 1
+
+        is_expression, is_implicit, is_insubstantial = self.get_attitude_booleans(annotation)
+
+        # inserting attitude
+        self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
+                                      None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
+                                      annotation['intensity'], 'Direct Objective'])
+
 
     def load_data(self):
         # loop over all annotations, executing different functions for each respective annotation type
@@ -320,6 +389,8 @@ class MPQA2MASTER:
             if self.is_ghost_annotation(annotation):
                 self.errors.append(annotation)
                 continue
+
+            self.csds_dict[annotation['unique_id']] = annotation
 
             # all annotation types will require identical processing in many areas
             file = annotation['doc_id']
@@ -361,9 +432,9 @@ class MPQA2MASTER:
             if annotation['annotation_type'] == 'expressive_subjectivity':
                 self.proc_expr_subj(annotation, global_sentence_id)
             elif annotation['annotation_type'] == 'direct_subjective':
-                self.proc_dir_subj(annotation)
+                self.proc_dir_subj(annotation, global_sentence_id)
             elif annotation['annotation_type'] == 'objective_speech_event':
-                self.proc_dir_obj(annotation)
+                self.proc_dir_obj(annotation, global_sentence_id)
             else:
                 continue
 
