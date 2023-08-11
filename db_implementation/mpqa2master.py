@@ -21,6 +21,9 @@ class MPQA2MASTER:
         self.con = sqlite3.connect("mpqa_master.db")
         self.cur = self.con.cursor()
 
+        self.empty_targets = []
+        self.empty_attitudes = []
+
         self.master_sentences = []
         self.master_mentions = []
         self.master_sources = []
@@ -341,6 +344,7 @@ class MPQA2MASTER:
 
         for attitude in attitudes:
             if not attitude:
+                self.empty_attitudes.append(annotation)
                 continue
 
             global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
@@ -350,6 +354,7 @@ class MPQA2MASTER:
 
             for target in targets:
                 if not target:
+                    self.empty_targets.append(annotation)
                     continue
 
                 head_start, head_end = target['w_head_span']
