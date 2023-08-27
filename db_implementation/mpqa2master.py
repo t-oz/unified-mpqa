@@ -49,6 +49,13 @@ class MPQA2MASTER:
 
         self.errors = []
 
+        self.true_row_count = 0
+        self.justin_errors = 0
+        self.annotation_types = set()
+        self.untouched, self.untouched_ids = [], []
+        self.attitude_links = []
+        self.not_applicable = []
+
     # initializing the DDL for the master schema
     @staticmethod
     def create_tables():
@@ -95,6 +102,18 @@ class MPQA2MASTER:
         self.con.commit()
         self.con.close()
 
+        print(f"Justin Errors: {self.justin_errors}")
+        print(f"True Row Count: {self.true_row_count}")
+        self.pp.pprint(self.annotation_types)
+
+        subtracted_attitude_links = set(self.untouched_ids).difference(set(self.attitude_links))
+        subtracted_attitude_links_reverse = set(self.attitude_links).difference(set(self.untouched_ids))
+
+        # for link in self.attitude_links:
+        #     if link not in self.untouched_ids:
+        #         print("oh no!")
+        pass
+
     def dump_errors(self):
         f = open('error_annotations.txt', 'wb')
         f.write(orjson.dumps(self.errors))
@@ -125,6 +144,7 @@ class MPQA2MASTER:
             return False
         except:
             return True
+
     def exec_sql(self):
         self.con.executemany('INSERT INTO SENTENCES (sentence_id, file, file_sentence_id, sentence)'
                              'VALUES (?, ?, ?, ?);', self.master_sentences)
@@ -166,6 +186,7 @@ class MPQA2MASTER:
     return the source ID for the source most immediate to the annotation in question
         
     """
+
     # BUG: nested source link's data corresponds to the FIRST mention of a source, not the one for THIS SENTENCE... that
     # data comes from the "convenient" nested_source LIST
     def process_sources(self, annotation, global_sentence_id):
@@ -242,11 +263,12 @@ class MPQA2MASTER:
 
                 w_head_start, w_head_end = tuple(nested_source['w_head_span'])
 
-                _, offset_list = self.assembled_tokens[global_sentence_id]
+                clean_head, _, offset_list = self.assembled_tokens[global_sentence_id]
                 if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
-                    mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
+                    mentions_entry = [global_token_id, global_sentence_id, clean_head,
                                       offset_list[w_head_start], offset_list[w_head_end], None, None, None]
                 else:
+                    # self.justin_errors += 1
                     mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
                                       None, None, None, None, None]
 
@@ -276,7 +298,7 @@ class MPQA2MASTER:
         anchor_token_id = self.next_global_token_id
         self.next_global_token_id += 1
 
-        clean_text, offset_list = self.assembled_tokens[global_sentence_id]
+        _, clean_text, offset_list = self.assembled_tokens[global_sentence_id]
         w_head_start, w_head_end = tuple(annotation['w_head_span'])
 
         if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
@@ -285,6 +307,7 @@ class MPQA2MASTER:
                                          offset_list[w_head_start], offset_list[w_head_end],
                                          None, None, None])
         else:
+            # self.justin_errors += 1
             self.master_mentions.append([anchor_token_id, global_sentence_id, None, None, None, None, None, None])
 
         return anchor_token_id
@@ -324,6 +347,8 @@ class MPQA2MASTER:
                                       None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
                                       annotation['intensity'], 'Expressive Subjective'])
 
+        self.true_row_count += 1
+
     # process a single direct subjective annotation
     """
     
@@ -338,9 +363,14 @@ class MPQA2MASTER:
         
     
     """
+
     def proc_dir_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
         attitudes = list(annotation['attitude'])
+        attitude_links = list(annotation['attitude_link'])
+
+        for link in attitude_links:
+            self.attitude_links.append(link)
 
         for attitude in attitudes:
             if not attitude:
@@ -369,6 +399,8 @@ class MPQA2MASTER:
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
                 self.next_global_attitude_id += 1
 
+                self.true_row_count += 1
+
     # process a single direct objective annotation
     def proc_dir_obj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
@@ -383,7 +415,7 @@ class MPQA2MASTER:
         self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
                                       None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
                                       annotation['intensity'], 'Direct Objective'])
-
+        self.true_row_count += 1
 
     def load_data(self):
         # loop over all annotations, executing different functions for each respective annotation type
@@ -416,16 +448,19 @@ class MPQA2MASTER:
 
             # if it is a new sentence, prep it for SQL insertion
             if new_sentence_insert:
-                clean_text, offset_list = None, None
+                clean_head, clean_text, offset_list = None, None, None
                 try:
                     # note: use justin's clean head!
-                    clean_text, offset_list = self.oc.assemble_tokens(annotation['w_text'], annotation['w_head'])
+                    # def return_clean_head(self, w_text, w_head, w_head_span)
+                    clean_head, clean_text, offset_list = self.oc.return_clean_head(annotation['w_text'],
+                                                                                    annotation['w_head'],
+                                                                                    annotation['w_head_span'])
                 except:
+                    self.justin_errors += 1
                     pass
 
-
                 # memoize!
-                self.assembled_tokens[global_sentence_id] = (clean_text, offset_list)
+                self.assembled_tokens[global_sentence_id] = (clean_head, clean_text, offset_list)
 
                 self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
 
@@ -434,6 +469,8 @@ class MPQA2MASTER:
 
             # disambiguating sources?
 
+            self.annotation_types.add(annotation['annotation_type'])
+
             if annotation['annotation_type'] == 'expressive_subjectivity':
                 self.proc_expr_subj(annotation, global_sentence_id)
             elif annotation['annotation_type'] == 'direct_subjective':
@@ -441,7 +478,18 @@ class MPQA2MASTER:
             elif annotation['annotation_type'] == 'objective_speech_event':
                 self.proc_dir_obj(annotation, global_sentence_id)
             else:
-                continue
+                # continue
+                if annotation['annotation_type'] in ['agreement',
+                                                     'arguing',
+                                                     'intention',
+                                                     'other_attitude',
+                                                     'sentiment',
+                                                     'speculation',
+                                                     'unknown']:
+                    self.untouched.append(annotation)
+                    self.untouched_ids.append(annotation['unique_id'])
+                else:
+                    self.not_applicable.append(annotation)
 
         bar.finish()
 
