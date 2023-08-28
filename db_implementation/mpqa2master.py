@@ -50,7 +50,7 @@ class MPQA2MASTER:
         self.errors = []
 
         self.true_row_count = 0
-        self.justin_errors = 0
+        self.justin_errors = []
         self.annotation_types = set()
         self.untouched, self.untouched_ids = [], []
         self.attitude_links = []
@@ -102,12 +102,20 @@ class MPQA2MASTER:
         self.con.commit()
         self.con.close()
 
-        print(f"Justin Errors: {self.justin_errors}")
+        print(f"Justin Errors: {len(self.justin_errors)}")
         print(f"True Row Count: {self.true_row_count}")
         self.pp.pprint(self.annotation_types)
 
         subtracted_attitude_links = set(self.untouched_ids).difference(set(self.attitude_links))
         subtracted_attitude_links_reverse = set(self.attitude_links).difference(set(self.untouched_ids))
+
+        math = len(self.csds) - len(self.not_applicable) - len(self.untouched) - len(self.errors)
+
+        print(f"math: total_annotations - sentence entries - top_level_attitudes - ghost_annotations"
+              f" = {len(self.csds)} - {len(self.not_applicable)} - {len(self.untouched)} - {len(self.errors)}"
+              f" = {math}")
+        print(f"discrepancy between true row count and math = {abs(math - self.true_row_count)}")
+
 
         # for link in self.attitude_links:
         #     if link not in self.untouched_ids:
@@ -115,12 +123,12 @@ class MPQA2MASTER:
         pass
 
     def dump_errors(self):
-        f = open('error_annotations.txt', 'wb')
-        f.write(orjson.dumps(self.errors))
+        f = open('justin_errors.txt', 'wb')
+        f.write(orjson.dumps(self.justin_errors))
         f.close()
-        for agent_id in self.agents:
-            agent = self.agents[agent_id]
-            pass
+        # for agent_id in self.agents:
+        #     agent = self.agents[agent_id]
+        #     pass
 
     def run_tests(self):
         ghost_agent_annotations = []
@@ -268,7 +276,7 @@ class MPQA2MASTER:
                     mentions_entry = [global_token_id, global_sentence_id, clean_head,
                                       offset_list[w_head_start], offset_list[w_head_end], None, None, None]
                 else:
-                    # self.justin_errors += 1
+                    self.justin_errors.append(annotation)
                     mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
                                       None, None, None, None, None]
 
@@ -307,7 +315,7 @@ class MPQA2MASTER:
                                          offset_list[w_head_start], offset_list[w_head_end],
                                          None, None, None])
         else:
-            # self.justin_errors += 1
+            self.justin_errors.append(annotation)
             self.master_mentions.append([anchor_token_id, global_sentence_id, None, None, None, None, None, None])
 
         return anchor_token_id
@@ -422,12 +430,12 @@ class MPQA2MASTER:
         bar = Bar("Annotations Processed", max=len(self.csds))
         for annotation in self.csds:
 
+            # self.csds_dict[annotation['unique_id']] = annotation
+
             # skipping useless annotations
             if self.is_ghost_annotation(annotation):
                 self.errors.append(annotation)
                 continue
-
-            self.csds_dict[annotation['unique_id']] = annotation
 
             # all annotation types will require identical processing in many areas
             file = annotation['doc_id']
@@ -456,7 +464,7 @@ class MPQA2MASTER:
                                                                                     annotation['w_head'],
                                                                                     annotation['w_head_span'])
                 except:
-                    self.justin_errors += 1
+                    self.justin_errors.append(annotation)
                     pass
 
                 # memoize!
