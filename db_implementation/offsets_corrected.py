@@ -1,9 +1,7 @@
 import re
 import json
-f = open('/Users/justinchen/Desktop/GitHub/unified-mpqa/db_implementation/mpqa_csds.json', 'r', encoding='utf-8')
-data = json.load(f)
 
-def replace_punc(clean_text, offset, offset_list):
+def replace_punc(clean_text, offset, start_offset_list, end_offset_list):
     poss_diff = 0
     dash_diff = 0
     s = clean_text
@@ -27,40 +25,51 @@ def replace_punc(clean_text, offset, offset_list):
     adjust_val = off1 + off2 + off3 + off4 + poss_diff + off6 + off7 + dash_diff + off9 + off10 + off11 + off12
     offset -= adjust_val
     if off1 + off2 + off3 + off4 + poss_diff + off6 + off7 + dash_diff + off9 + off10 + off11 + off12 > 0:
-        offset_list[-1] -= adjust_val
-    return s, offset, offset_list
+        start_offset_list[-1] -= adjust_val
+        end_offset_list[-1] -= adjust_val
+    return s, offset, start_offset_list, end_offset_list
 
-def quote_helper(offset, offset_list, quote_bool, index, clean_text, w_text):
+def quote_helper(offset, start_offset_list, end_offset_list, quote_bool, index, clean_text, w_text):
     if not quote_bool:
+        #if first quote
         #when only one quote is present and it's the last one in the sentence
         if index == len(w_text)-1:
             clean_text += w_text[index]
-            offset_list.append(offset)
+            start_offset_list.append(offset)
+            end_offset_list.append(offset)
             offset += 1
-            return offset, offset_list, quote_bool, index, clean_text, w_text
+            return offset, start_offset_list, end_offset_list, quote_bool, index, clean_text, w_text
         clean_text += ' ' + w_text[index] + w_text[index+1]
         offset += 1
-        offset_list.append(offset)
+        #for the quote
+        start_offset_list.append(offset)
+        end_offset_list.append(offset)
         offset += len(w_text[index])
-        offset_list.append(offset)
+        #for start of the word
+        start_offset_list.append(offset)
 
         #for the word itself
         index+=1
         offset += len(w_text[index])
+        #end of the word
+        end_offset_list.append(offset-1)
         quote_bool = True
     else:
+        #if second quote
         clean_text += w_text[index]
-        offset_list.append(offset)
+        start_offset_list.append(offset)
+        end_offset_list.append(offset)
         offset += 1
         quote_bool = False
-    return offset, offset_list, quote_bool, index, clean_text, w_text
+    return offset, start_offset_list, end_offset_list, quote_bool, index, clean_text, w_text
 
 #returns clean text and offset_list that contains the start offset of every token in the clean text, given a list of tokens that comprise the clean text
 # w_head is needed just to check if the head is only one single quote, which sometimes occurs
 def assemble_tokens(w_text, w_head):
     clean_text = ''
     offset = 0
-    offset_list = [0]
+    start_offset_list = [0]
+    end_offset_list = []
     index = 0
     in_double_quote = False
     in_single_quote = False
@@ -71,11 +80,13 @@ def assemble_tokens(w_text, w_head):
                 if len(w_head) == 1 and w_head[0] == '"':
                     clean_text += w_text[index]
                     offset += len(w_text[index])
-                    offset_list.append(offset)
-                    return clean_text, offset_list
+                    end_offset_list.append(offset)
+                    start_offset_list.append(offset)
+                    return clean_text, start_offset_list, end_offset_list
                 clean_text += w_text[index] + w_text[index+1]
                 offset += len(w_text[index])
-                offset_list.append(offset)
+                start_offset_list.append(offset)
+                end_offset_list.append(offset)
 
                 #for the word itself
                 index+=1
@@ -84,19 +95,21 @@ def assemble_tokens(w_text, w_head):
             else:
                 clean_text += w_text[index]
                 offset += len(w_text[index])
+                end_offset_list.append(offset-1)
         elif w_text[index] == '"':
-            offset, offset_list, in_double_quote, index, clean_text, w_text = quote_helper(offset, offset_list, in_double_quote, index, clean_text, w_text)
+            offset, start_offset_list, end_offset_list, in_double_quote, index, clean_text, w_text = quote_helper(offset, start_offset_list, end_offset_list, in_double_quote, index, clean_text, w_text)
         elif w_text[index] == '\'':
-            offset, offset_list, in_single_quote, index, clean_text, w_text = quote_helper(offset, offset_list, in_single_quote, index, clean_text, w_text)
+            offset, start_offset_list, end_offset_list, in_single_quote, index, clean_text, w_text = quote_helper(offset, start_offset_list, end_offset_list, in_single_quote, index, clean_text, w_text)
         else:
             clean_text += ' '
             offset += 1
-            offset_list.append(offset)
+            start_offset_list.append(offset)
             clean_text += w_text[index]
             offset += len(w_text[index])
-        clean_text, offset, offset_list = replace_punc(clean_text, offset, offset_list)
+            end_offset_list.append(offset-1)
+        clean_text, offset, start_offset_list, end_offset_list = replace_punc(clean_text, offset, start_offset_list, end_offset_list)
         index += 1
-    return clean_text, offset_list
+    return clean_text, start_offset_list, end_offset_list
 
 #returns clean head, full clean text of sentence, and offset list
 def return_clean_head(w_text, w_head, w_head_span):
@@ -105,20 +118,20 @@ def return_clean_head(w_text, w_head, w_head_span):
     for ind in range(len(w_text)):
         if w_text[ind] == '\'s':
             w_text[ind] = "POSS"
-    clean, offset_list = assemble_tokens(w_text, w_head)
+    clean, start_offset_list, end_offset_list = assemble_tokens(w_text, w_head)
     w_start, w_end = w_head_span
     #if head is whole sentence
     if w_start == w_end:
-        return head, clean, offset_list
-    s_head = offset_list[w_start]
+        return head, clean, start_offset_list, end_offset_list
+    s_head = start_offset_list[w_start]
     #if rest of sentence is part of head, prevents list index out of range error
-    if w_end == len(offset_list):
-        return clean[s_head:], clean, offset_list
+    if w_end == len(start_offset_list):
+        return clean[s_head:], clean, start_offset_list, end_offset_list
     else:
-        e_head = offset_list[w_end]
+        e_head = start_offset_list[w_end]
 
     #deal with punctuation since they won't have spaces before them (commas will be two spaces away, quotes one space away)
-    if offset_list[-1] == e_head or clean[offset_list[w_end+1]-2] in punc_list or clean[offset_list[w_end+1]-1] in punc_list:
+    if start_offset_list[-1] == e_head or clean[start_offset_list[w_end+1]-2] in punc_list or clean[start_offset_list[w_end+1]-1] in punc_list:
         #if punctuation is last character in the sentence, you want to include it
         if w_head[-1] in punc_list and w_text[-1] == w_head[-1]:
             head = clean[s_head:]
@@ -126,9 +139,19 @@ def return_clean_head(w_text, w_head, w_head_span):
             head = clean[s_head:e_head]
     else:
         head = clean[s_head:e_head-1]
-    return head, clean, offset_list
+    return head, clean, start_offset_list, end_offset_list
 
-def testing(l_bound, limit):
+#NEW CODE TO RETURN FIRST AND LAST OFFSET FOR MENTIONS TABLE
+def first_last_offset(w_head_span, start_offset_list, end_offset_list):
+    w_head_start, w_head_end = w_head_span
+    first_offset = start_offset_list[w_head_start]
+    if w_head_end >= len(start_offset_list):
+        end_offset = end_offset_list[-1]
+    else:
+        end_offset = end_offset_list[w_head_end]
+    return first_offset, end_offset
+
+def testing(l_bound, limit, data):
     count = 0
     for obj in data:
         w_text = obj['w_text']
@@ -147,4 +170,56 @@ def testing(l_bound, limit):
         count += 1
 
 if __name__ == '__main__':
-    testing(0,100)
+    #f = open('/Users/justinchen/Desktop/GitHub/unified-mpqa/db_implementation/mpqa_csds.json', 'r', encoding='utf-8')
+    #data = json.load(f)
+    w_text = [
+                "But",
+                "the",
+                "political",
+                "classes",
+                "in",
+                "the",
+                "United",
+                "States",
+                ",",
+                "and",
+                "not",
+                "only",
+                "they",
+                ",",
+                "consider",
+                "America",
+                "as",
+                "something",
+                "special",
+                ",",
+                "as",
+                "\"",
+                "God",
+                "'s",
+                "own",
+                "country",
+                ".",
+                "\""
+            ]
+    w_head = [
+                "something",
+                "special",
+                ",",
+                "as",
+                "\"",
+                "God",
+                "'s",
+                "own",
+                "country",
+                ".",
+                "\""
+            ]
+    w_head_span = [17, 28]
+    head, clean, start_offset_list, end_offset_list = return_clean_head(w_text, w_head, w_head_span)
+    print(head, clean)
+    print(first_last_offset(w_head_span, start_offset_list, end_offset_list))
+
+
+
+    #testing(0,100, data)
