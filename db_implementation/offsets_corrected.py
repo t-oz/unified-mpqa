@@ -36,14 +36,14 @@ def quote_helper(offset, start_offset_list, end_offset_list, quote_bool, index, 
         if index == len(w_text)-1:
             clean_text += w_text[index]
             start_offset_list.append(offset)
-            end_offset_list.append(offset)
+            end_offset_list.append(offset+1)
             offset += 1
             return offset, start_offset_list, end_offset_list, quote_bool, index, clean_text, w_text
         clean_text += ' ' + w_text[index] + w_text[index+1]
         offset += 1
         #for the quote
         start_offset_list.append(offset)
-        end_offset_list.append(offset)
+        end_offset_list.append(offset+1)
         offset += len(w_text[index])
         #for start of the word
         start_offset_list.append(offset)
@@ -52,13 +52,13 @@ def quote_helper(offset, start_offset_list, end_offset_list, quote_bool, index, 
         index+=1
         offset += len(w_text[index])
         #end of the word
-        end_offset_list.append(offset-1)
+        end_offset_list.append(offset)
         quote_bool = True
     else:
         #if second quote
         clean_text += w_text[index]
         start_offset_list.append(offset)
-        end_offset_list.append(offset)
+        end_offset_list.append(offset+1)
         offset += 1
         quote_bool = False
     return offset, start_offset_list, end_offset_list, quote_bool, index, clean_text, w_text
@@ -80,13 +80,13 @@ def assemble_tokens(w_text, w_head):
                 if len(w_head) == 1 and w_head[0] == '"':
                     clean_text += w_text[index]
                     offset += len(w_text[index])
-                    end_offset_list.append(offset)
+                    end_offset_list.append(offset+1)
                     start_offset_list.append(offset)
                     return clean_text, start_offset_list, end_offset_list
                 clean_text += w_text[index] + w_text[index+1]
                 offset += len(w_text[index])
                 start_offset_list.append(offset)
-                end_offset_list.append(offset)
+                end_offset_list.append(offset+1)
 
                 #for the word itself
                 index+=1
@@ -95,7 +95,7 @@ def assemble_tokens(w_text, w_head):
             else:
                 clean_text += w_text[index]
                 offset += len(w_text[index])
-                end_offset_list.append(offset-1)
+                end_offset_list.append(offset)
         elif w_text[index] == '"':
             offset, start_offset_list, end_offset_list, in_double_quote, index, clean_text, w_text = quote_helper(offset, start_offset_list, end_offset_list, in_double_quote, index, clean_text, w_text)
         elif w_text[index] == '\'':
@@ -106,7 +106,7 @@ def assemble_tokens(w_text, w_head):
             start_offset_list.append(offset)
             clean_text += w_text[index]
             offset += len(w_text[index])
-            end_offset_list.append(offset-1)
+            end_offset_list.append(offset)
         clean_text, offset, start_offset_list, end_offset_list = replace_punc(clean_text, offset, start_offset_list, end_offset_list)
         index += 1
     return clean_text, start_offset_list, end_offset_list
