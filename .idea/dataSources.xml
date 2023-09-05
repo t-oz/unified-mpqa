@@ -13,5 +13,13 @@
         </library>
       </libraries>
     </data-source>
+    <data-source source="LOCAL" name="mpqa_master.db" uuid="461683c0-198f-4001-8d02-b8c9214171e8">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/db_implementation/mpqa_master.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+      <auto-close enable="true" timeout="1" />
+    </data-source>
   </component>
 </project>
