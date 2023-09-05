@@ -115,6 +115,7 @@ class MPQA2MASTER:
               f" = {len(self.csds)} - {len(self.not_applicable)} - {len(self.untouched)} - {len(self.errors)}"
               f" = {math}")
         print(f"discrepancy between true row count and math = {abs(math - self.true_row_count)}")
+        print(len(self.empty_attitudes), len(self.empty_targets))
 
 
         # for link in self.attitude_links:
