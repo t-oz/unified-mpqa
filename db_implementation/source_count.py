@@ -50,8 +50,8 @@ def check_this_source(f_name, line):
     for test_source in test_sources:
         test_source = test_source.strip()
         if test_source not in true_sources:
-            print(f_name, line, test_source, test_sources, true_sources)
-            print("\n")
+            # print(f_name, line, test_source, test_sources, true_sources)
+            # print("\n")
             count += 1
 
     return count
@@ -150,7 +150,7 @@ def count_orig():
 
                         if chunk == 'attitude-link=""':
                             attitude_link_empty += 1
-                        elif chunk == 'target-link="none"':
+                        elif chunk == 'attitude-link="none"':
                             attitude_link_none += 1
                 if not attitude_link_found and not skip:
                     # pp.pprint(pieces)
@@ -173,9 +173,10 @@ def count_orig():
 
     print(f'Total dir-subjs with \'attitude-link\' literally not appearing in the text: {no_attitude_link}')
     print(f'Total dir-subjs with \'attitude-link=""\': {attitude_link_empty}')
-    print(f'Total dir-subjs with \'target-link="none"\': {attitude_link_none})')
+    print(f'Total dir-subjs with \'attitude-link="none"\': {attitude_link_none})')
     print(f'Total of previous 3 lines dealing with attitude-link irregularities: '
           f'{no_attitude_link + attitude_link_empty + attitude_link_none}')
+    print(f'Estimated grant total: 'f'{no_target_link + target_link_empty + target_link_none + total_annotations + no_attitude_link + attitude_link_empty + attitude_link_none}')
     print(f'Total source mentions that do not correspond to an "id=___" field: {ghost_references}')
 
 
