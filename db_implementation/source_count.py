@@ -1,7 +1,6 @@
 # tyler osborne
 # tgosborne@cs.stonybrook.edu
 # 4 September 2023
-
 import pathlib
 import pprint
 
@@ -39,12 +38,24 @@ def verify_sources(f, f_name):
                 sources.append(source_id)
     source_verification[f_name] = sources
 
-def check_this_source(f_name, pieces):
+
+def check_this_source(f_name, line):
     true_sources = source_verification[f_name]
-    for chunk in pieces:
-        if 'nested-source' in chunk:
-            test_sources = chunk[chunk.index('"'):-1].split(',')
-            print(true_sources, test_sources)
+    source_line = line[line.index('nested-source="') + 15:]
+    source_line = source_line[:source_line.index('"')]
+    test_sources = source_line.split(',')
+
+    count = 0
+
+    for test_source in test_sources:
+        test_source = test_source.strip()
+        if test_source not in true_sources:
+            print(f_name, line, test_source, test_sources, true_sources)
+            print("\n")
+            count += 1
+
+    return count
+
 
 def count_orig():
     mpqa = pathlib.Path('database.mpqa.2.0/man_anns')
@@ -77,12 +88,13 @@ def count_orig():
     for file in mpqa.rglob("gateman*"):
         with file.open() as f:
             verify_sources(f, str(file))
+        with file.open() as f:
             for line in f:
-                pieces = line.split()
 
-                if 'nested-source' in line:
-                    print(line)
-                    check_this_source(str(file), pieces)
+                if 'nested-source=' in line:
+                    ghost_references += check_this_source(str(file), line)
+
+                pieces = line.split()
 
                 for chunk in pieces:
                     if "GATE_" in chunk and chunk in annotation_types:
@@ -164,10 +176,12 @@ def count_orig():
     print(f'Total dir-subjs with \'target-link="none"\': {attitude_link_none})')
     print(f'Total of previous 3 lines dealing with attitude-link irregularities: '
           f'{no_attitude_link + attitude_link_empty + attitude_link_none}')
+    print(f'Total source mentions that do not correspond to an "id=___" field: {ghost_references}')
 
 
 if __name__ == '__main__':
     count_orig()
+    exit()
 
 
 # if 'target-link=""' in line or ("GATE_attitude" in line and "target-link" not in line):
