@@ -50,10 +50,14 @@ class MPQA2MASTER:
         self.errors = []
 
         self.true_row_count = 0
+        self.expr_subjs = 0
+        self.dir_objs = 0
+        self.dir_subjs_no_attitude = 0
+        self.attitudes = 0
         self.justin_errors = []
         self.annotation_types = set()
         self.untouched, self.untouched_ids = [], []
-        self.attitude_links = []
+        self.attitude_links = set()
         self.not_applicable = []
 
     # initializing the DDL for the master schema
@@ -95,6 +99,8 @@ class MPQA2MASTER:
 
         print("\nLoading Python data into master schema...")
         self.load_data()
+        # print(f'DIFFERENCE: {len(self.untouched)}, {self.count_remaining_attitudes()}')
+        self.process_remaining_attitudes()
         self.exec_sql()
 
         self.dump_errors()
@@ -116,6 +122,8 @@ class MPQA2MASTER:
               f" = {math}")
         print(f"discrepancy between true row count and math = {abs(math - self.true_row_count)}")
         print(len(self.empty_attitudes), len(self.empty_targets))
+
+        print(self.attitudes, self.expr_subjs, self.dir_objs, len(self.untouched))
 
 
         # for link in self.attitude_links:
@@ -304,6 +312,10 @@ class MPQA2MASTER:
 
     # creating mentions entry for anchor
     def catalog_anchor(self, annotation, global_sentence_id):
+
+        # if annotation['head'].strip() == "":
+        #     return None
+
         anchor_token_id = self.next_global_token_id
         self.next_global_token_id += 1
 
@@ -317,7 +329,9 @@ class MPQA2MASTER:
                                          None, None, None])
         else:
             self.justin_errors.append(annotation)
-            self.master_mentions.append([anchor_token_id, global_sentence_id, None, None, None, None, None, None])
+            self.master_mentions.append([anchor_token_id, global_sentence_id,
+                                         annotation['clean_head'], annotation['head_start'],
+                                         annotation['head_end'], None, None, None])
 
         return anchor_token_id
 
@@ -342,6 +356,52 @@ class MPQA2MASTER:
 
         return is_expression, is_implicit, is_insubstantial
 
+    def count_remaining_attitudes(self):
+        c = len(self.untouched)
+        for attitude, global_sentence_id in self.untouched:
+
+            a_id = attitude['unique_id']
+            if a_id in self.attitude_links:
+                c -= 1
+        return c
+
+    def process_remaining_attitudes(self):
+        for attitude, global_sentence_id in self.untouched:
+
+            a_id = attitude['unique_id']
+            if a_id in self.attitude_links:
+                continue
+
+            global_source_id = self.process_sources(attitude, global_sentence_id)
+            global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+
+            polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], \
+                attitude['annotation_type']
+
+            targets = list(attitude['target'])
+            if len(targets) == 0:
+                self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
+                                              global_anchor_token_id, None, 0, 0, 0, None, polarity,
+                                              intensity, label_type])
+                self.next_global_attitude_id += 1
+                continue
+
+            for target in targets:
+                if 'w_head_span' not in target:
+                    continue
+                head_start, head_end = target['w_head_span']
+
+                target_token_id = self.next_global_token_id
+                self.next_global_token_id += 1
+
+                self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
+                                             head_start, head_end, None, None, None])
+
+                self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
+                                              target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
+                self.next_global_attitude_id += 1
+
+
     def proc_expr_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
         global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
@@ -352,6 +412,7 @@ class MPQA2MASTER:
         is_expression, is_implicit, is_insubstantial = self.get_attitude_booleans(annotation)
 
         # inserting attitude
+        self.expr_subjs += 1
         self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
                                       None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
                                       annotation['intensity'], 'Expressive Subjective'])
@@ -379,45 +440,77 @@ class MPQA2MASTER:
         attitude_links = list(annotation['attitude_link'])
         global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
 
-        if len(attitudes) == 0:
-            polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], \
-                annotation['annotation_type']
+        found_empty_attitude, found_empty_target = False, False
 
+        polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], \
+            annotation['annotation_type']
+
+        if len(attitudes) == 0:
+            # global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
             self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
                                           None, 0, 0, 0, None, polarity, intensity, label_type])
             self.next_global_attitude_id += 1
+            self.attitudes += 1
 
             return
 
         for link in attitude_links:
-            self.attitude_links.append(link)
+            self.attitude_links.add(link)
 
         for attitude in attitudes:
-            if not attitude:
-                polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], \
-                    annotation['annotation_type']
+            # if not attitude and not found_empty_attitude:
+            #     found_empty_attitude = True
+            #
+            #     # polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], \
+            #     #     annotation['annotation_type']
+            #
+            #     self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
+            #                                   None, 0, 0, 0, None, polarity, intensity, label_type])
+            #     self.next_global_attitude_id += 1
+            #     self.empty_attitudes.append(annotation)
+            #
+            #     self.attitudes += 1
+            #
+            #     continue
 
-                self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
-                                              None, 0, 0, 0, None, polarity, intensity, label_type])
+            if 'target' not in attitude:
+                if 'w_head_span' in attitude:
+                    global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+                else:
+                    continue
+                self.empty_targets.append(annotation)
+                self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
+                                              global_anchor_token_id, None, 0, 0, 0, None, polarity,
+                                              intensity, label_type])
                 self.next_global_attitude_id += 1
-                self.empty_attitudes.append(annotation)
-                continue
 
-            global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
-            polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], attitude['annotation_type']
+                self.attitudes += 1
+
+                continue
 
             targets = list(attitude['target'])
 
-            for target in targets:
-                if not target:
-                    self.empty_targets.append(annotation)
-                    self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
-                                                  global_anchor_token_id, None, 0, 0, 0, None, polarity,
-                                                  intensity, label_type])
-                    self.next_global_attitude_id += 1
-                    continue
+            # global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+            # global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+            polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], attitude['annotation_type']
 
+            for target in targets:
+                # if not target and not found_empty_target:
+                #     found_empty_target = True
+                #
+                #     self.empty_targets.append(annotation)
+                #     self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
+                #                                   global_anchor_token_id, None, 0, 0, 0, None, polarity,
+                #                                   intensity, label_type])
+                #     self.next_global_attitude_id += 1
+                #     continue
+
+                if target == {}:
+                    continue
                 head_start, head_end = target['w_head_span']
+
+                if head_start == 0 and head_end == 0:
+                    continue
 
                 target_token_id = self.next_global_token_id
                 self.next_global_token_id += 1
@@ -428,6 +521,8 @@ class MPQA2MASTER:
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
                 self.next_global_attitude_id += 1
+
+                self.attitudes += 1
 
                 self.true_row_count += 1
 
@@ -446,6 +541,8 @@ class MPQA2MASTER:
                                       None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
                                       annotation['intensity'], 'Direct Objective'])
         self.true_row_count += 1
+
+        self.dir_objs += 1
 
     def load_data(self):
         # loop over all annotations, executing different functions for each respective annotation type
@@ -516,7 +613,7 @@ class MPQA2MASTER:
                                                      'sentiment',
                                                      'speculation',
                                                      'unknown']:
-                    self.untouched.append(annotation)
+                    self.untouched.append((annotation, global_sentence_id))
                     self.untouched_ids.append(annotation['unique_id'])
                 else:
                     self.not_applicable.append(annotation)

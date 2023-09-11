@@ -35,15 +35,19 @@ def count_json():
     type_to_list = {}
 
     total_annotations = 0
+    total_attitudes = 0
     missing_targets = 0
     missing_attitudes = 0
     missing_agents = 0
+    dir_subj_offsets = 0
 
     for anno_type in annotation_types:
         type_to_list[anno_type] = []
 
     for anno in csds:
         if 'attitude' in anno['unique_id']:
+
+            total_attitudes += 1
 
             if len(list(anno['target_link'])) == 0:
                 missing_targets += 1
@@ -57,6 +61,9 @@ def count_json():
                     total_annotations += 1
 
         elif anno['annotation_type'] == 'direct_subjective':
+
+            if tuple(anno['w_head_span']) == (0, 0):
+                dir_subj_offsets += 1
 
             for attitude in list(anno['attitude']):
                 if not attitude:
@@ -77,9 +84,11 @@ def count_json():
             total_annotations += 1
 
     print(f'Total annotations: {total_annotations}')
+    print(f'Total attitudes: {total_attitudes}')
     print(f'Total agents and targets: {len(targets) + len(agents)}')
     print(f'Missing attitudes: {missing_attitudes}')
     print(f'Missing targets: {missing_targets}')
+    print(dir_subj_offsets)
 
     for anno_type in annotation_types:
         print(f'{anno_type}: {len(type_to_list[anno_type])}')
