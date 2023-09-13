@@ -401,7 +401,6 @@ class MPQA2MASTER:
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
                 self.next_global_attitude_id += 1
 
-
     def proc_expr_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
         global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
@@ -447,10 +446,10 @@ class MPQA2MASTER:
 
         if len(attitudes) == 0:
             # global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
-            self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
-                                          None, 0, 0, 0, None, polarity, intensity, label_type])
-            self.next_global_attitude_id += 1
-            self.attitudes += 1
+            # self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
+            #                               None, 0, 0, 0, None, polarity, intensity, label_type])
+            # self.next_global_attitude_id += 1
+            # self.attitudes += 1
 
             return
 
