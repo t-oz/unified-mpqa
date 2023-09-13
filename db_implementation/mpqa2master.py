@@ -280,10 +280,12 @@ class MPQA2MASTER:
 
                 w_head_start, w_head_end = tuple(nested_source['w_head_span'])
 
-                clean_head, _, offset_list = self.assembled_tokens[global_sentence_id]
-                if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
+                clean_head, _, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
+                if start_offset_list is not None:
+                    start, end = self.oc.first_last_offset((w_head_start, w_head_end),
+                                                           start_offset_list, end_offset_list)
                     mentions_entry = [global_token_id, global_sentence_id, clean_head,
-                                      offset_list[w_head_start], offset_list[w_head_end], None, None, None]
+                                      start, end, None, None, None]
                 else:
                     self.justin_errors.append(annotation)
                     mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
@@ -319,19 +321,19 @@ class MPQA2MASTER:
         anchor_token_id = self.next_global_token_id
         self.next_global_token_id += 1
 
-        _, clean_text, offset_list = self.assembled_tokens[global_sentence_id]
+        clean_head, clean_text, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
         w_head_start, w_head_end = tuple(annotation['w_head_span'])
-
-        if offset_list is not None and (w_head_end == 0 or w_head_end < len(offset_list)):
+        """w_head_end == 0 or"""
+        if start_offset_list is not None:
+            start, end = self.oc.first_last_offset((w_head_start, w_head_end),
+                                                   start_offset_list, end_offset_list)
             self.master_mentions.append([anchor_token_id, global_sentence_id,
-                                         clean_text[offset_list[w_head_start]:offset_list[w_head_end]],
-                                         offset_list[w_head_start], offset_list[w_head_end],
-                                         None, None, None])
+                                         clean_head, start, end, None, None, None])
         else:
             self.justin_errors.append(annotation)
             self.master_mentions.append([anchor_token_id, global_sentence_id,
-                                         annotation['clean_head'], annotation['head_start'],
-                                         annotation['head_end'], None, None, None])
+                                         annotation['clean_head'], None,
+                                         None, None, None, None])
 
         return anchor_token_id
 
@@ -389,13 +391,14 @@ class MPQA2MASTER:
             for target in targets:
                 if 'w_head_span' not in target:
                     continue
-                head_start, head_end = target['w_head_span']
+                # head_start, head_end = target['w_head_span']
 
-                target_token_id = self.next_global_token_id
-                self.next_global_token_id += 1
+                # target_token_id = self.next_global_token_id
+                # self.next_global_token_id += 1
 
-                self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
-                                             head_start, head_end, None, None, None])
+                target_token_id = self.catalog_anchor(target, global_sentence_id)
+                # self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
+                #                              head_start, head_end, None, None, None])
 
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
@@ -511,11 +514,12 @@ class MPQA2MASTER:
                 if head_start == 0 and head_end == 0:
                     continue
 
-                target_token_id = self.next_global_token_id
-                self.next_global_token_id += 1
+                # target_token_id = self.next_global_token_id
+                # self.next_global_token_id += 1
 
-                self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
-                                             head_start, head_end, None, None, None])
+                target_token_id = self.catalog_anchor(target, global_sentence_id)
+                # self.master_mentions.append([target_token_id, global_sentence_id, target['clean_head'],
+                #                              head_start, head_end, None, None, None])
 
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
@@ -574,19 +578,18 @@ class MPQA2MASTER:
 
             # if it is a new sentence, prep it for SQL insertion
             if new_sentence_insert:
-                clean_head, clean_text, offset_list = None, None, None
+                clean_head, clean_text, start_offset_list, end_offset_list = None, None, None, None
                 try:
                     # note: use justin's clean head!
                     # def return_clean_head(self, w_text, w_head, w_head_span)
-                    clean_head, clean_text, offset_list = self.oc.return_clean_head(annotation['w_text'],
-                                                                                    annotation['w_head'],
-                                                                                    annotation['w_head_span'])
+                    clean_head, clean_text, start_offset_list, end_offset_list = (
+                        self.oc.return_clean_head(annotation['w_text'], ['w_head'], annotation['w_head_span']))
                 except:
                     self.justin_errors.append(annotation)
                     pass
 
                 # memoize!
-                self.assembled_tokens[global_sentence_id] = (clean_head, clean_text, offset_list)
+                self.assembled_tokens[global_sentence_id] = (clean_head, clean_text, start_offset_list, end_offset_list)
 
                 self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
 
