@@ -53,6 +53,7 @@ class MPQA2MASTER:
         self.expr_subjs = 0
         self.dir_objs = 0
         self.dir_subjs_no_attitude = 0
+        self.dir_subj_missing_attitudes = []
         self.attitudes = 0
         self.justin_errors = []
         self.annotation_types = set()
@@ -137,9 +138,10 @@ class MPQA2MASTER:
         f = open('justin_errors.txt', 'wb')
         f.write(orjson.dumps(self.justin_errors))
         f.close()
-        # for agent_id in self.agents:
-        #     agent = self.agents[agent_id]
-        #     pass
+
+        f = open('dir_subj_no_attitudes.txt', 'wb')
+        f.write(orjson.dumps(self.dir_subj_missing_attitudes))
+        f.close()
 
     def run_tests(self):
         ghost_agent_annotations = []
@@ -493,6 +495,7 @@ class MPQA2MASTER:
         polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], annotation['annotation_type']
 
         if len(attitude_links) == 0:
+            self.dir_subj_missing_attitudes.append(annotation)
             # global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
             # self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
             #                               None, 0, 0, 0, None, polarity, intensity, label_type])
