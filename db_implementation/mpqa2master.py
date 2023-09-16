@@ -280,12 +280,18 @@ class MPQA2MASTER:
 
                 w_head_start, w_head_end = tuple(nested_source['w_head_span'])
 
-                clean_head, _, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
+                clean_text, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
                 if start_offset_list is not None:
                     start, end = self.oc.first_last_offset((w_head_start, w_head_end),
-                                                           start_offset_list, end_offset_list)
-                    mentions_entry = [global_token_id, global_sentence_id, clean_head,
-                                      start, end, None, None, None]
+                                                           start_offset_list, end_offset_list, clean_text)
+
+                    if (start, end) == (-2, -2) or end >= start:
+                        self.justin_errors.append(annotation)
+                        mentions_entry = [global_token_id, global_sentence_id, "ERROR",
+                                          start, end, clean_text[start:end], None, None]
+                    else:
+                        mentions_entry = [global_token_id, global_sentence_id, clean_text[start:end],
+                                          start, end, None, None, None]
                 else:
                     self.justin_errors.append(annotation)
                     mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
@@ -317,18 +323,30 @@ class MPQA2MASTER:
 
         # if annotation['head'].strip() == "":
         #     return None
+        w_head_start, w_head_end = tuple(annotation['w_head_span'])
+
+        # if 'unique_id' not in annotation:
+        #     print('huh')
+
+        if 'target' in annotation['unique_id']:
+            global_sentence_id = self.get_global_sentence_id(annotation)
 
         anchor_token_id = self.next_global_token_id
         self.next_global_token_id += 1
 
-        clean_head, clean_text, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
-        w_head_start, w_head_end = tuple(annotation['w_head_span'])
+        clean_text, start_offset_list, end_offset_list = self.assembled_tokens[global_sentence_id]
+        # w_head_start, w_head_end = tuple(annotation['w_head_span'])
         """w_head_end == 0 or"""
         if start_offset_list is not None:
             start, end = self.oc.first_last_offset((w_head_start, w_head_end),
-                                                   start_offset_list, end_offset_list)
-            self.master_mentions.append([anchor_token_id, global_sentence_id,
-                                         clean_head, start, end, None, None, None])
+                                                   start_offset_list, end_offset_list, clean_text)
+            if (start, end) == (-2, -2) or end >= start:
+                self.justin_errors.append(annotation)
+                self.master_mentions.append([anchor_token_id, global_sentence_id,
+                                             'ERROR', start, end, clean_text[start:end], None, None])
+            else:
+                self.master_mentions.append([anchor_token_id, global_sentence_id,
+                                             clean_text[start:end], start, end, None, None, None])
         else:
             self.justin_errors.append(annotation)
             self.master_mentions.append([anchor_token_id, global_sentence_id,
@@ -380,15 +398,21 @@ class MPQA2MASTER:
             polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], \
                 attitude['annotation_type']
 
-            targets = list(attitude['target'])
-            if len(targets) == 0:
+            target_links = list(attitude['target_link'])
+            if len(target_links) == 0:
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
                                               global_anchor_token_id, None, 0, 0, 0, None, polarity,
                                               intensity, label_type])
                 self.next_global_attitude_id += 1
                 continue
 
-            for target in targets:
+            for target_link in target_links:
+
+                if target_link not in self.targets:
+                    continue
+                target = self.targets[target_link]
+
+
                 if 'w_head_span' not in target:
                     continue
                 # head_start, head_end = target['w_head_span']
@@ -440,14 +464,11 @@ class MPQA2MASTER:
         global_source_id = self.process_sources(annotation, global_sentence_id)
         attitudes = list(annotation['attitude'])
         attitude_links = list(annotation['attitude_link'])
-        global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
+        # global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
 
-        found_empty_attitude, found_empty_target = False, False
+        polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], annotation['annotation_type']
 
-        polarity, intensity, label_type = annotation['polarity'], annotation['intensity'], \
-            annotation['annotation_type']
-
-        if len(attitudes) == 0:
+        if len(attitude_links) == 0:
             # global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
             # self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
             #                               None, 0, 0, 0, None, polarity, intensity, label_type])
@@ -459,7 +480,7 @@ class MPQA2MASTER:
         for link in attitude_links:
             self.attitude_links.add(link)
 
-        for attitude in attitudes:
+        for attitude_link in attitude_links:
             # if not attitude and not found_empty_attitude:
             #     found_empty_attitude = True
             #
@@ -475,12 +496,20 @@ class MPQA2MASTER:
             #
             #     continue
 
-            if 'target' not in attitude:
+            if attitude_link not in self.csds_dict:
+                continue
+            attitude = self.csds_dict[attitude_link]
+
+            # print('test')
+
+            target_links = list(attitude['target_link'])
+
+            if len(target_links) == 0:
                 if 'w_head_span' in attitude:
                     global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
                 else:
                     continue
-                self.empty_targets.append(annotation)
+                self.empty_targets.append(attitude)
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
                                               global_anchor_token_id, None, 0, 0, 0, None, polarity,
                                               intensity, label_type])
@@ -490,13 +519,17 @@ class MPQA2MASTER:
 
                 continue
 
-            targets = list(attitude['target'])
+            # targets = list(attitude['target'])
 
             # global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
             # global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
             polarity, intensity, label_type = attitude['polarity'], attitude['intensity'], attitude['annotation_type']
+            global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
 
-            for target in targets:
+            for target_link in target_links:
+                if target_link not in self.targets:
+                    continue
+                target = self.targets[target_link]
                 # if not target and not found_empty_target:
                 #     found_empty_target = True
                 #
@@ -547,15 +580,66 @@ class MPQA2MASTER:
 
         self.dir_objs += 1
 
+    def get_global_sentence_id(self, annotation):
+        # careful to add only unique sentences to the DB
+        new_sentence_insert = None
+        if annotation['sentence_id'] not in self.encountered_sentences:
+            global_sentence_id = self.next_global_sentence_id
+            self.encountered_sentences[annotation['sentence_id']] = self.next_global_sentence_id
+            self.next_global_sentence_id += 1
+            new_sentence_insert = True
+        else:
+            global_sentence_id = self.encountered_sentences[annotation['sentence_id']]
+            new_sentence_insert = False
+
+        # if it is a new sentence, prep it for SQL insertion
+        if new_sentence_insert:
+            clean_head, clean_text, start_offset_list, end_offset_list = None, None, None, None
+            try:
+                # note: use justin's clean head!
+                # def return_clean_head(self, w_text, w_head, w_head_span)
+                clean_head, clean_text, start_offset_list, end_offset_list = (
+                    self.oc.return_clean_head(annotation['w_text'], ['w_head'], annotation['w_head_span']))
+            except:
+                self.justin_errors.append(annotation)
+                pass
+
+            # memoize!
+            self.assembled_tokens[global_sentence_id] = (clean_text, start_offset_list, end_offset_list)
+
+            file = annotation['doc_id']
+            file_sentence_id = int(annotation['sentence_id'].split('&&')[1].split('-')[1])
+            self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
+
+        return global_sentence_id
+
+    def is_junk(self, annotation):
+        if annotation['annotation_type'] == 'direct_subjective':
+            return False
+        if annotation['head'] in ['"', "''"]:
+            return True
+        elif annotation['text'] in ['</DOC>', 'LU_ANNOTATE>']:
+            return True
+        elif 'LU_ANNOTATE' in annotation['text']:
+            return True
+        elif annotation['text'][-1] == '>':
+            return True
+        elif annotation['doc_id'] in ['ula/ENRON-pearson-email-25jul02']:
+            return True
+        elif (annotation['head_start'] >= len(annotation['text'])
+              or annotation['head_end'] >= len(annotation['text'])):
+            return True
+
     def load_data(self):
+        for annotation in self.csds:
+            self.csds_dict[annotation['unique_id']] = annotation
+
         # loop over all annotations, executing different functions for each respective annotation type
         bar = Bar("Annotations Processed", max=len(self.csds))
         for annotation in self.csds:
 
-            # self.csds_dict[annotation['unique_id']] = annotation
-
             # skipping useless annotations
-            if self.is_ghost_annotation(annotation):
+            if self.is_ghost_annotation(annotation) or self.is_junk(annotation):
                 self.errors.append(annotation)
                 continue
 
@@ -563,40 +647,32 @@ class MPQA2MASTER:
             file = annotation['doc_id']
             sentence = annotation['text']
 
-            # careful to add only unique sentences to the DB
-            if annotation['sentence_id'] not in self.encountered_sentences:
-                global_sentence_id = self.next_global_sentence_id
-                self.encountered_sentences[annotation['sentence_id']] = self.next_global_sentence_id
-                self.next_global_sentence_id += 1
-                new_sentence_insert = True
-            else:
-                global_sentence_id = self.encountered_sentences[annotation['sentence_id']]
-                new_sentence_insert = False
+            global_sentence_id = self.get_global_sentence_id(annotation)
 
             # extracting file sentence id
             file_sentence_id = int(annotation['sentence_id'].split('&&')[1].split('-')[1])
 
             # if it is a new sentence, prep it for SQL insertion
-            if new_sentence_insert:
-                clean_head, clean_text, start_offset_list, end_offset_list = None, None, None, None
-                try:
-                    # note: use justin's clean head!
-                    # def return_clean_head(self, w_text, w_head, w_head_span)
-                    clean_head, clean_text, start_offset_list, end_offset_list = (
-                        self.oc.return_clean_head(annotation['w_text'], ['w_head'], annotation['w_head_span']))
-                except:
-                    self.justin_errors.append(annotation)
-                    pass
-
-                # memoize!
-                self.assembled_tokens[global_sentence_id] = (clean_head, clean_text, start_offset_list, end_offset_list)
-
-                self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
+            # if new_sentence_insert:
+            #     clean_head, clean_text, start_offset_list, end_offset_list = None, None, None, None
+            #     try:
+            #         # note: use justin's clean head!
+            #         # def return_clean_head(self, w_text, w_head, w_head_span)
+            #         clean_head, clean_text, start_offset_list, end_offset_list = (
+            #             self.oc.return_clean_head(annotation['w_text'], ['w_head'], annotation['w_head_span']))
+            #     except:
+            #         self.justin_errors.append(annotation)
+            #         pass
+            #
+            #     # memoize!
+            #     self.assembled_tokens[global_sentence_id] = (clean_head, clean_text, start_offset_list, end_offset_list)
+            #
+            #     self.master_sentences.append([global_sentence_id, file, file_sentence_id, clean_text])
 
             # past sentences, the code's behavior diverges depending on the annotation type
             bar.next()
 
-            # disambiguating sources?
+
 
             self.annotation_types.add(annotation['annotation_type'])
 

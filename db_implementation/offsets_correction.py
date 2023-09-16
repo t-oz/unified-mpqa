@@ -152,11 +152,29 @@ class OffsetsCorrection:
 
     @staticmethod
     # NEW CODE TO RETURN FIRST AND LAST OFFSET FOR MENTIONS TABLE
-    def first_last_offset(w_head_span, start_offset_list, end_offset_list):
+    def first_last_offset(w_head_span, start_offset_list, end_offset_list, clean_text):
         w_head_start, w_head_end = w_head_span
+
+        if w_head_start >= len(start_offset_list) or len(end_offset_list) == 0:
+            return -2, -2
+
         first_offset = start_offset_list[w_head_start]
-        if w_head_end >= len(end_offset_list):
-            end_offset = end_offset_list[-1]
+        if w_head_end >= len(start_offset_list):
+            end_offset = start_offset_list[-1]
         else:
-            end_offset = end_offset_list[w_head_end]
+            end_offset = start_offset_list[w_head_end]
+
+        if (first_offset, end_offset) == (0, 0):
+            print('hmm')
+
         return first_offset, end_offset
+
+
+        # if w_head_end >= len(end_offset_list):
+        #     end_offset = end_offset_list[-1]
+        # else:
+        #     end_offset = end_offset_list[w_head_end]
+        #
+        # pred_head = clean_text[first_offset:end_offset]
+        #
+        # return first_offset, end_offset
