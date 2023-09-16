@@ -60,6 +60,8 @@ class MPQA2MASTER:
         self.attitude_links = set()
         self.not_applicable = []
 
+        self.implicit_dir_obj = []
+
     # initializing the DDL for the master schema
     @staticmethod
     def create_tables():
@@ -285,13 +287,13 @@ class MPQA2MASTER:
                     start, end = self.oc.first_last_offset((w_head_start, w_head_end),
                                                            start_offset_list, end_offset_list, clean_text)
 
-                    if (start, end) == (-2, -2) or end >= start:
-                        self.justin_errors.append(annotation)
-                        mentions_entry = [global_token_id, global_sentence_id, "ERROR",
-                                          start, end, clean_text[start:end], None, None]
-                    else:
-                        mentions_entry = [global_token_id, global_sentence_id, clean_text[start:end],
-                                          start, end, None, None, None]
+                    # if (start, end) == (-2, -2) or end >= start:
+                    #     self.justin_errors.append(annotation)
+                    #     mentions_entry = [global_token_id, global_sentence_id, "ERROR",
+                    #                       start, end, clean_text[start:end], None, None]
+                    # else:
+                    mentions_entry = [global_token_id, global_sentence_id, clean_text[start:end],
+                                      start, end, None, None, None]
                 else:
                     self.justin_errors.append(annotation)
                     mentions_entry = [global_token_id, global_sentence_id, nested_source['clean_head'],
@@ -340,13 +342,13 @@ class MPQA2MASTER:
         if start_offset_list is not None:
             start, end = self.oc.first_last_offset((w_head_start, w_head_end),
                                                    start_offset_list, end_offset_list, clean_text)
-            if (start, end) == (-2, -2) or end >= start:
-                self.justin_errors.append(annotation)
-                self.master_mentions.append([anchor_token_id, global_sentence_id,
-                                             'ERROR', start, end, clean_text[start:end], None, None])
-            else:
-                self.master_mentions.append([anchor_token_id, global_sentence_id,
-                                             clean_text[start:end], start, end, None, None, None])
+            # if (start, end) == (-2, -2) or end >= start:
+            #     self.justin_errors.append(annotation)
+            #     self.master_mentions.append([anchor_token_id, global_sentence_id,
+            #                                  'ERROR', start, end, clean_text[start:end], None, None])
+            # else:
+            self.master_mentions.append([anchor_token_id, global_sentence_id,
+                                         clean_text[start:end], start, end, None, None, None])
         else:
             self.justin_errors.append(annotation)
             self.master_mentions.append([anchor_token_id, global_sentence_id,
@@ -427,6 +429,28 @@ class MPQA2MASTER:
                 self.master_attitudes.append([self.next_global_attitude_id, global_source_id, global_anchor_token_id,
                                               target_token_id, 0, 0, 0, None, polarity, intensity, label_type])
                 self.next_global_attitude_id += 1
+
+        # process a single direct objective annotation
+    def proc_dir_obj(self, annotation, global_sentence_id):
+        global_source_id = self.process_sources(annotation, global_sentence_id)
+        global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
+
+        if (annotation['head_start'], annotation['head_end']) == (0, 0) and annotation['implicit'] == 'true':
+            self.implicit_dir_obj.append(annotation)
+
+        global_attitude_id = self.next_global_attitude_id
+        self.next_global_attitude_id += 1
+
+        is_expression, is_implicit, is_insubstantial = self.get_attitude_booleans(annotation)
+
+        # inserting attitude
+        self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
+                                      None, is_expression, is_implicit, is_insubstantial, None,
+                                      annotation['polarity'],
+                                      annotation['intensity'], 'Direct Objective'])
+        self.true_row_count += 1
+
+        self.dir_objs += 1
 
     def proc_expr_subj(self, annotation, global_sentence_id):
         global_source_id = self.process_sources(annotation, global_sentence_id)
@@ -561,24 +585,6 @@ class MPQA2MASTER:
                 self.attitudes += 1
 
                 self.true_row_count += 1
-
-    # process a single direct objective annotation
-    def proc_dir_obj(self, annotation, global_sentence_id):
-        global_source_id = self.process_sources(annotation, global_sentence_id)
-        global_anchor_token_id = self.catalog_anchor(annotation, global_sentence_id)
-
-        global_attitude_id = self.next_global_attitude_id
-        self.next_global_attitude_id += 1
-
-        is_expression, is_implicit, is_insubstantial = self.get_attitude_booleans(annotation)
-
-        # inserting attitude
-        self.master_attitudes.append([global_attitude_id, global_source_id, global_anchor_token_id,
-                                      None, is_expression, is_implicit, is_insubstantial, None, annotation['polarity'],
-                                      annotation['intensity'], 'Direct Objective'])
-        self.true_row_count += 1
-
-        self.dir_objs += 1
 
     def get_global_sentence_id(self, annotation):
         # careful to add only unique sentences to the DB

@@ -164,8 +164,8 @@ class OffsetsCorrection:
         else:
             end_offset = start_offset_list[w_head_end]
 
-        if (first_offset, end_offset) == (0, 0):
-            print('hmm')
+        # if (first_offset, end_offset) == (0, 0):
+        #     print('hmm')
 
         return first_offset, end_offset
 
