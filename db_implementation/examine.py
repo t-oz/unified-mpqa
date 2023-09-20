@@ -10,5 +10,5 @@ pp = pprint.PrettyPrinter(stream=open('dir_subj_heads_when_no_attitudes.txt', 'w
 for i, annotation in enumerate(data):
     pp.pprint(i)
     pp.pprint(annotation['text'])
-    pp.pprint(annotation['head'])
+    pp.pprint(f'HEAD: {annotation["head"]}')
     pp.pprint('-------------')
