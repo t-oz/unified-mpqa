@@ -54,6 +54,7 @@ class MPQA2MASTER:
         self.dir_objs = 0
         self.dir_subjs_no_attitude = 0
         self.dir_subj_missing_attitudes = []
+        self.attitudes_missing_targets = []
         self.attitudes = 0
         self.justin_errors = []
         self.annotation_types = set()
@@ -141,6 +142,10 @@ class MPQA2MASTER:
 
         f = open('dir_subj_no_attitudes.txt', 'wb')
         f.write(orjson.dumps(self.dir_subj_missing_attitudes))
+        f.close()
+
+        f = open('dir_subj_no_targets.txt', 'wb')
+        f.write(orjson.dumps(self.attitudes_missing_targets))
         f.close()
 
     def run_tests(self):
@@ -532,17 +537,20 @@ class MPQA2MASTER:
             target_links = list(attitude['target_link'])
 
             if len(target_links) == 0:
-                if 'w_head_span' in attitude:
-                    global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
-                else:
-                    continue
-                self.empty_targets.append(attitude)
-                self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
-                                              global_anchor_token_id, None, 0, 0, 0, None, polarity,
-                                              intensity, label_type])
-                self.next_global_attitude_id += 1
 
-                self.attitudes += 1
+                self.attitudes_missing_targets.append(attitude)
+
+                # if 'w_head_span' in attitude:
+                #     global_anchor_token_id = self.catalog_anchor(attitude, global_sentence_id)
+                # else:
+                #     continue
+                # self.empty_targets.append(attitude)
+                # self.master_attitudes.append([self.next_global_attitude_id, global_source_id,
+                #                               global_anchor_token_id, None, 0, 0, 0, None, polarity,
+                #                               intensity, label_type])
+                # self.next_global_attitude_id += 1
+                #
+                # self.attitudes += 1
 
                 continue
 
@@ -686,11 +694,13 @@ class MPQA2MASTER:
             self.annotation_types.add(annotation['annotation_type'])
 
             if annotation['annotation_type'] == 'expressive_subjectivity':
-                self.proc_expr_subj(annotation, global_sentence_id)
+                # self.proc_expr_subj(annotation, global_sentence_id)
+                pass
             elif annotation['annotation_type'] == 'direct_subjective':
                 self.proc_dir_subj(annotation, global_sentence_id)
             elif annotation['annotation_type'] == 'objective_speech_event':
-                self.proc_dir_obj(annotation, global_sentence_id)
+                # self.proc_dir_obj(annotation, global_sentence_id)
+                pass
             else:
                 # continue
                 if annotation['annotation_type'] in ['agreement',
