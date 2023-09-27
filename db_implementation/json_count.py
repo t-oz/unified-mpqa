@@ -63,7 +63,8 @@ def count_json():
         elif anno['annotation_type'] == 'direct_subjective':
 
             if len(list(anno['attitude'])) == 0:
-                print("see here")
+                # print("see here")
+                pass
             if tuple(anno['w_head_span']) == (0, 0):
                 dir_subj_offsets += 1
 
@@ -75,7 +76,11 @@ def count_json():
                     if target:
                         total_annotations += 1
         elif anno['annotation_type'] == 'objective_speech_event':
-            print('see here')
+            target_links = list(anno['attitude'])
+            if len(target_links) > 0:
+                print('see here')
+            # else:
+            #     print('ok')
         type_to_list[anno['annotation_type']].append(anno)
 
     for anno_type in annotation_types:
