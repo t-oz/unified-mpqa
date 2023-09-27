@@ -57,8 +57,8 @@ def check_this_source(f_name, line):
     return count
 
 
-def count_orig():
-    mpqa = pathlib.Path('database.mpqa.2.0/man_anns')
+def count_orig(n):
+    mpqa = pathlib.Path(f'database.mpqa.{n}.0/man_anns')
 
     annotation_types = \
     ['GATE_agent',
@@ -86,6 +86,7 @@ def count_orig():
     ghost_references = 0
 
     for file in mpqa.rglob("gateman*"):
+        print(file)
         with file.open() as f:
             verify_sources(f, str(file))
         with file.open() as f:
@@ -181,7 +182,9 @@ def count_orig():
 
 
 if __name__ == '__main__':
-    count_orig()
+    count_orig(2)
+    print('\n----------------------------\n')
+    count_orig(3)
     exit()
 
 
