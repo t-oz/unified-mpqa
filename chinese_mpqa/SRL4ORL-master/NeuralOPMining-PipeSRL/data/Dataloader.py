@@ -1,7 +1,7 @@
-from data.Vocab import *
+from Vocab import *
 import numpy as np
-import torch
-from torch.autograd import Variable
+# import torch
+# from torch.autograd import Variable
 import argparse
 
 def read_corpus(file_path):
@@ -112,9 +112,9 @@ def batch_variable_srl(inputs, labels, vocab):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--train', default='expdata/aaai19srl.train.conll')
-    argparser.add_argument('--dev', default='expdata/aaai19srl.dev.conll')
-    argparser.add_argument('--test', default='expdata/aaai19srl.test.conll')
+    argparser.add_argument('--train', default='aaai19srlfeat.train.conll')
+    argparser.add_argument('--dev', default='aaai19srlfeat.dev.conll')
+    argparser.add_argument('--test', default='aaai19srlfeat.test.conll')
     argparser.add_argument('--use-cuda', action='store_true', default=True)
 
     args, extra_args = argparser.parse_known_args()
@@ -125,7 +125,27 @@ if __name__ == '__main__':
     dev_data = read_corpus(args.dev)
     test_data = read_corpus(args.test)
 
-    for onebatch in data_iter(train_data, 100, False):
-        words, extwords, srltags, predicts, labels, lengths, masks = batch_data_variable(onebatch, vocab)
-        #print("one batch")
+    train_data.extend(dev_data)
+    train_data.extend(test_data)
+
+    print(len(train_data))
+
+    tags = {}
+    num_targets = 0
+
+    for sentence in train_data:
+        for word in sentence.words:
+            if 'B-TARGET' in word.label:
+                num_targets += 1
+
+            if word.srltag in tags:
+                tags[word.srltag] += 1
+            else:
+                tags[word.srltag] = 1
+    print(sorted(list(tags.items()), key=lambda x: x[1], reverse=True))
+    print(num_targets)
+
+    # for onebatch in data_iter(train_data, 100, False):
+    #     words, extwords, srltags, predicts, labels, lengths, masks = batch_data_variable(onebatch, vocab)
+    #     #print("one batch")
 

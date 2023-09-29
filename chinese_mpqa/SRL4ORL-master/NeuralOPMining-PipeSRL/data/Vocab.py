@@ -1,5 +1,5 @@
 from collections import Counter
-from data.SRL import *
+from SRL import *
 import numpy as np
 
 
