@@ -1,15 +1,7 @@
--- working query
-select * from
-    (select a.*, sen.sentence_id, file, file_sentence_id, sentence,
-       m.token_id, m.token_id, token_text, token_offset_start, token_offset_end,
-       s.source_id, s.source_id, parent_source_id, nesting_level, source from sentences sen
-join mentions m on sen.sentence_id = m.sentence_id
-join sources s on m.token_id = s.token_id
-join attitudes a on s.source_id = a.source_id) source_data
-
-join
-
-    (select a.*, sen.sentence_id, file, file_sentence_id, sentence,
-       m.token_id, m.token_id, token_text, token_offset_start, token_offset_end from sentences sen
-join mentions m on sen.sentence_id = m.sentence_id
-join attitudes a on a.anchor_token_id = m.token_id) anchor_data on source_data.attitude_id = anchor_data.attitude_id
+select a.label_type, a.intensity, a.polarity, s2.source_id, s2.source source_text, s2.nesting_level,
+       (select source from sources where source_id = s2.parent_source_id) parent_source,
+       (select token_text from mentions where token_id = a.anchor_token_id) anchor_text,
+       m.token_text target_text, s.sentence from attitudes a
+join mentions m on a.target_token_id = m.token_id
+join sentences s on m.sentence_id = s.sentence_id
+left join sources s2 on a.source_id = s2.source_id;
