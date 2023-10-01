@@ -234,7 +234,7 @@ class MPQA2MASTER:
         # first loop: traverse tree leaf -> root, until we find an encountered source or reach the root
         for agent_id in agents:
             # disambiguating agents to be sentence-based, not file-based
-            key = (agent_id + str(global_sentence_id), nesting_level)
+            key = (agent_id, global_sentence_id, nesting_level)
 
             if key in self.encountered_sources:
                 relevant_global_source_id = self.encountered_sources[key]
@@ -516,8 +516,6 @@ class MPQA2MASTER:
             # self.attitudes += 1
 
             return
-
-
 
         for link in attitude_links:
             self.attitude_links.add(link)
