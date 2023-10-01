@@ -233,11 +233,8 @@ class MPQA2MASTER:
 
         # first loop: traverse tree leaf -> root, until we find an encountered source or reach the root
         for agent_id in agents:
-            # disambiguating agent-w's to be sentence-based, not file-based
-            if agent_id[-7:] == 'agent-w':
-                key = (agent_id + str(global_sentence_id), nesting_level)
-            else:
-                key = (agent_id, nesting_level)
+            # disambiguating agents to be sentence-based, not file-based
+            key = (agent_id + str(global_sentence_id), nesting_level)
 
             if key in self.encountered_sources:
                 relevant_global_source_id = self.encountered_sources[key]
@@ -275,9 +272,12 @@ class MPQA2MASTER:
 
             # disambiguating agent-w's to be sentence-based, not file-based
             # also customizing author-only mentions
+
+            author = False
             if agent_id[-7:] == 'agent-w':
                 mentions_entry = [global_token_id, global_sentence_id, 'AUTHOR', -1, -1, None, None, None]
                 key = (agent_id + str(global_sentence_id), nesting_level)
+                author = True
             else:
                 # mentions_entry = [global_token_id, global_sentence_id, agent_annotation['head'],
                 #                   agent_annotation['head_start'], agent_annotation['head_end'], None, None, None]
@@ -310,12 +310,20 @@ class MPQA2MASTER:
 
             self.master_mentions.append(mentions_entry)
 
+            agent_head = None
+            if author:
+                agent_head = 'AUTHOR'
+            elif agent_annotation['id'] == 'agent-implicit':
+                agent_head = 'IMPLICIT'
+            else:
+                agent_head = agent_annotation['head']
+
             if key in self.encountered_sources:
                 global_source_id = self.encountered_sources[key]
             else:
                 self.encountered_sources[key] = global_source_id
                 sources_entry = [global_source_id, global_sentence_id, global_token_id,
-                                 global_parent_source_id, nesting_level, agent_annotation['head']]
+                                 global_parent_source_id, nesting_level, agent_head]
                 self.master_sources.append(sources_entry)
 
             # saving out global source id for this entry for return, since the last one processed in this loop
@@ -508,6 +516,8 @@ class MPQA2MASTER:
             # self.attitudes += 1
 
             return
+
+
 
         for link in attitude_links:
             self.attitude_links.add(link)
