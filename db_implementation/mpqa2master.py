@@ -273,6 +273,8 @@ class MPQA2MASTER:
             # disambiguating agent-w's to be sentence-based, not file-based
             # also customizing author-only mentions
 
+            source_text = None
+
             author = False
             if agent_id[-7:] == 'agent-w':
                 mentions_entry = [global_token_id, global_sentence_id, 'AUTHOR', -1, -1, None, None, None]
@@ -299,7 +301,12 @@ class MPQA2MASTER:
                     #     mentions_entry = [global_token_id, global_sentence_id, "ERROR",
                     #                       start, end, clean_text[start:end], None, None]
                     # else:
-                    mentions_entry = [global_token_id, global_sentence_id, clean_text[start:end],
+                    if (start, end) == (0, 0):
+                        source_text = 'IMPLICIT'
+                    else:
+                        source_text = clean_text[start:end]
+
+                    mentions_entry = [global_token_id, global_sentence_id, source_text,
                                       start, end, None, None, None]
                 else:
                     self.justin_errors.append(annotation)
@@ -316,7 +323,7 @@ class MPQA2MASTER:
             elif agent_annotation['id'] == 'agent-implicit':
                 agent_head = 'IMPLICIT'
             else:
-                agent_head = agent_annotation['head']
+                agent_head = source_text
 
             if key in self.encountered_sources:
                 global_source_id = self.encountered_sources[key]
